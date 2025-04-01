@@ -1,4 +1,16 @@
 // Core product interfaces
+export interface CompetitorItem {
+  company_name: string;
+  product_name: string;
+  category: string;
+}
+
+export interface CompetitorsData {
+  direct_competitors: CompetitorItem[];
+  niche_competitors: CompetitorItem[];
+  broader_competitors: CompetitorItem[];
+}
+
 export interface ProductAnalysis {
   companyName: string;
   competitorAnalysisUrl?: string;
@@ -31,6 +43,7 @@ export interface ProductAnalysis {
     content: string;
     images?: string[];
   }>;
+  competitors?: CompetitorsData;
 }
 
 // Default product template
@@ -60,5 +73,10 @@ export const defaultProduct: ProductAnalysis = {
     directCompetitors: [],
     existingMethods: []
   },
-  capabilities: []
+  capabilities: [],
+  competitors: {
+    direct_competitors: [],
+    niche_competitors: [],
+    broader_competitors: []
+  }
 };

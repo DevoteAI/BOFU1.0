@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ProductAnalysis } from '../../types/product';
+import { ProductAnalysis, CompetitorsData } from '../../types/product/types';
 import { ProductHeader } from './ProductHeader';
 import { ProductSection } from './ProductSection';
 import { CompetitorAnalysis } from './CompetitorAnalysis';
@@ -98,8 +98,63 @@ export function ProductCard({
         <CompetitorAnalysis 
           product={product}
           onUpdate={(url) => {
+            console.log("Received competitorAnalysisUrl update:", url);
+            
+            // First, try to parse the URL as JSON to see if it contains competitor data
+            try {
+              const jsonData = JSON.parse(url);
+              console.log("Successfully parsed competitorAnalysisUrl as JSON:", jsonData);
+              
+              // Check if it contains competitor data
+              if (jsonData.competitors && typeof jsonData.competitors === 'object') {
+                console.log("Found competitors in the URL JSON:", jsonData.competitors);
+                
+                // Create a new product with both the URL and the competitors
+                const updatedProduct = { 
+                  ...product, 
+                  competitorAnalysisUrl: url,
+                  competitors: {
+                    direct_competitors: Array.isArray(jsonData.competitors.direct_competitors) 
+                      ? [...jsonData.competitors.direct_competitors] : [],
+                    niche_competitors: Array.isArray(jsonData.competitors.niche_competitors)
+                      ? [...jsonData.competitors.niche_competitors] : [],
+                    broader_competitors: Array.isArray(jsonData.competitors.broader_competitors)
+                      ? [...jsonData.competitors.broader_competitors] : []
+                  }
+                };
+                
+                console.log("Updating product with both URL and competitors:", updatedProduct);
+                updateProduct(JSON.parse(JSON.stringify(updatedProduct)));
+                return;
+              }
+            } catch (e) {
+              console.log("competitorAnalysisUrl is not a valid JSON string:", e);
+            }
+            
+            // If not a JSON string or doesn't contain competitors, just update the URL
             const updatedProduct = { ...product, competitorAnalysisUrl: url };
             updateProduct(updatedProduct);
+          }}
+          onUpdateCompetitors={(competitors: CompetitorsData) => {
+            console.log("ProductCard received competitors update:", competitors);
+            
+            // Create a completely new product object with the competitors
+            const updatedProduct = { 
+              ...product, 
+              competitors: {
+                direct_competitors: Array.isArray(competitors.direct_competitors) 
+                  ? [...competitors.direct_competitors] : [],
+                niche_competitors: Array.isArray(competitors.niche_competitors)
+                  ? [...competitors.niche_competitors] : [],
+                broader_competitors: Array.isArray(competitors.broader_competitors)
+                  ? [...competitors.broader_competitors] : []
+              }
+            };
+            
+            console.log("Updating product with competitors:", updatedProduct.competitors);
+            
+            // Force a re-render by creating a completely new product object
+            updateProduct(JSON.parse(JSON.stringify(updatedProduct)));
           }}
         />
 
