@@ -153,29 +153,39 @@ function ProductResultsPage({
   const handleSaveProduct = async (product: ProductAnalysis, index: number) => {
     // Create a deep clone of the product using JSON to ensure no references are shared
     const productDeepCopy = JSON.parse(JSON.stringify(product));
-    // Create a new array containing only the selected product
-    const singleProductArray = [productDeepCopy];
-    console.log(`[ProductResultsPage] Saving only single product: "${product.productDetails?.name}" (from index ${index})`);
-    console.log(`[ProductResultsPage] Saving array length: ${singleProductArray.length}`);
     
-    // Call saveResearchResults directly instead of going through performSaveOrUpdate
-    // This ensures we don't override the existing collection or trigger navigation
     try {
-      // Use the direct function that doesn't update any shared state
-      const result = await saveResearchResults(singleProductArray, 
-        `${product.companyName || 'Unknown'} - ${product.productDetails?.name || 'Product'}`, 
-        false);
-      
-      // Just show success toast without any navigation
-      toast.success(`Saved "${product.productDetails?.name || 'Product'}" to history`);
+      if (existingId) {
+        // Update the existing entry instead of creating a new one
+        await updateResearchResults(
+          existingId,
+          [productDeepCopy], // Keep it as an array for consistency
+          `${product.companyName || 'Unknown'} - ${product.productDetails?.name || 'Product'}`,
+          false
+        );
+        
+        toast.success(`Updated "${product.productDetails?.name || 'Product'}" analysis`);
+      } else {
+        // Only create a new entry if there isn't an existing one
+        const result = await saveResearchResults(
+          [productDeepCopy],
+          `${product.companyName || 'Unknown'} - ${product.productDetails?.name || 'Product'}`,
+          false
+        );
+        
+        toast.success(`Saved "${product.productDetails?.name || 'Product'}" to history`);
+        
+        // Update the ID if this is a new entry
+        if (onSaveComplete) {
+          onSaveComplete(result);
+        }
+      }
       
       // Refresh history list in the background if callback provided
       if (onHistorySave) {
         console.log(`[ProductResultsPage] Refreshing history data in background`);
         await onHistorySave();
       }
-      
-      console.log(`[ProductResultsPage] Product saved successfully with ID: ${result}`);
     } catch (error: any) {
       console.error('Error saving single product:', error);
       toast.error(`Failed to save product: ${error.message}`);
@@ -341,7 +351,7 @@ function ProductResultsPage({
                 key={index}
                 product={product}
                 index={index}
-                isActionLoading={isLoadingThis} // Pass the single loading state
+                isActionLoading={isLoadingThis}
                 onSave={handleSaveProduct} 
                 onApprove={handleApproveProduct} 
                 onUpdateSection={updateProductSection}
@@ -351,6 +361,7 @@ function ProductResultsPage({
                   setEditedProducts(newProducts);
                 }}
                 isMultipleProducts={editedProducts.length > 1}
+                isAdmin={false}
               />
             );
           })}

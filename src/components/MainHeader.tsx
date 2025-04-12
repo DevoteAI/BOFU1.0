@@ -98,7 +98,17 @@ export function MainHeader({
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.4 }}
             >
-              <Link to="/" className="flex items-center gap-3 group">
+              <Link 
+                to="/" 
+                className="flex items-center gap-3 group"
+                onClick={(e) => {
+                  // Prevent default navigation behavior
+                  e.preventDefault();
+                  
+                  // Always navigate to home page by setting window.location.href
+                  window.location.href = '/';
+                }}
+              >
                 <motion.div
                   whileHover={{ rotate: 15, scale: 1.1 }}
                   transition={{ type: "spring", stiffness: 300 }}
@@ -113,8 +123,25 @@ export function MainHeader({
             {showHistory !== undefined && setShowHistory && (
               <motion.button
                 onClick={() => {
-                  console.log("History button clicked in MainHeader");
+                  console.log("History button clicked in MainHeader, current state:", { showHistory });
+                  // Call setShowHistory to update parent component state
                   setShowHistory(!showHistory);
+                  
+                  // Also explicitly save this change to localStorage
+                  // This ensures the change is persisted immediately
+                  try {
+                    const currentState = localStorage.getItem('bofu_app_state');
+                    if (currentState) {
+                      const parsedState = JSON.parse(currentState);
+                      parsedState.showHistory = !showHistory;
+                      parsedState.currentView = !showHistory ? 'history' : 'main';
+                      parsedState.lastView = !showHistory ? 'history' : parsedState.lastView;
+                      localStorage.setItem('bofu_app_state', JSON.stringify(parsedState));
+                      console.log("Updated localStorage with new history state:", parsedState);
+                    }
+                  } catch (error) {
+                    console.error("Error updating localStorage:", error);
+                  }
                 }}
                 className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2
                   ${showHistory 

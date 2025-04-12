@@ -589,6 +589,7 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
                           }
                         }}
                         isMultipleProducts={userProducts.length > 1}
+                        isAdmin={true}
                       />
                     ))}
                   </div>
@@ -733,6 +734,7 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
                     }
                   }}
                   isMultipleProducts={false}
+                  isAdmin={true}
                 />
                 
                 <div className="flex justify-end mt-8 space-x-3">

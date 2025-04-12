@@ -518,6 +518,21 @@ export function CompetitorAnalysis({ product, onUpdate, onUpdateCompetitors }: C
                 href={product.competitorAnalysisUrl}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (!product.competitorAnalysisUrl) {
+                    toast.error('Document URL is missing. Please try generating the report again.');
+                    return;
+                  }
+                  // Check if it's a valid URL
+                  try {
+                    const url = new URL(product.competitorAnalysisUrl);
+                    window.open(url.toString(), '_blank');
+                  } catch (err) {
+                    console.error('Invalid URL:', err);
+                    toast.error('Invalid document URL. Please try generating the report again.');
+                  }
+                }}
                 className="text-xs text-primary-300 hover:text-primary-200 flex items-center w-fit"
               >
                 View Report <ExternalLink size={10} className="ml-1" />
