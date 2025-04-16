@@ -122,26 +122,55 @@ export function MainHeader({
           <div className="flex items-center gap-4">
             {showHistory !== undefined && setShowHistory && (
               <motion.button
-                onClick={() => {
-                  console.log("History button clicked in MainHeader, current state:", { showHistory });
-                  // Call setShowHistory to update parent component state
-                  setShowHistory(!showHistory);
+                onClick={(e) => {
+                  // Prevent default behavior
+                  e.preventDefault();
+                  e.stopPropagation();
                   
-                  // Also explicitly save this change to localStorage
-                  // This ensures the change is persisted immediately
+                  console.log("History button clicked in MainHeader, current state:", { showHistory });
+                  
+                  // First, update all state and storage
+                  if (setShowHistory) {
+                    setShowHistory(true);
+                  }
+                  
+                  // Update localStorage state
                   try {
                     const currentState = localStorage.getItem('bofu_app_state');
-                    if (currentState) {
-                      const parsedState = JSON.parse(currentState);
-                      parsedState.showHistory = !showHistory;
-                      parsedState.currentView = !showHistory ? 'history' : 'main';
-                      parsedState.lastView = !showHistory ? 'history' : parsedState.lastView;
-                      localStorage.setItem('bofu_app_state', JSON.stringify(parsedState));
-                      console.log("Updated localStorage with new history state:", parsedState);
-                    }
+                    const parsedState = currentState ? JSON.parse(currentState) : {};
+                    const updatedState = {
+                      ...parsedState,
+                      showHistory: true,
+                      currentView: 'history',
+                      lastView: 'history',
+                      fromProductResults: true
+                    };
+                    localStorage.setItem('bofu_app_state', JSON.stringify(updatedState));
+                    console.log("Updated localStorage with new history state:", updatedState);
                   } catch (error) {
                     console.error("Error updating localStorage:", error);
                   }
+
+                  // Update sessionStorage
+                  sessionStorage.setItem('bofu_came_from_history', 'true');
+                  sessionStorage.setItem('bofu_current_view', 'history');
+                  sessionStorage.setItem('bofu_force_history_view', 'true');
+
+                  // Force history view if available
+                  if (forceHistoryView) {
+                    console.log("Forcing history view via prop");
+                    forceHistoryView();
+                  }
+
+                  // Always navigate to history view
+                  // Use a small timeout to ensure state updates have completed
+                  setTimeout(() => {
+                    // Check if we're still not in history view
+                    if (window.location.pathname !== '/history') {
+                      console.log("Forcing navigation to history view");
+                      window.location.href = '/history';
+                    }
+                  }, 50);
                 }}
                 className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2
                   ${showHistory 

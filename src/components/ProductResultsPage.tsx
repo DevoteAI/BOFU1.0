@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
@@ -38,6 +38,24 @@ function ProductResultsPage({
   const [isSaving, setIsSaving] = React.useState(false);
   const [savingProductIndex, setSavingProductIndex] = React.useState<number | null>(null);
   const [actionLoadingIndex, setActionLoadingIndex] = React.useState<number | null>(null);
+  const [user, setUser] = useState<any>(null);
+
+  // Get the current user from Supabase
+  useEffect(() => {
+    const getCurrentUser = async () => {
+      const { data } = await supabase.auth.getSession();
+      setUser(data.session?.user || null);
+    };
+    
+    getCurrentUser();
+    
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+    });
+    
+    return () => subscription.unsubscribe();
+  }, []);
 
   // Add logging for component mounting and prop changes
   React.useEffect(() => {
@@ -47,10 +65,105 @@ function ProductResultsPage({
       setShowHistoryType: typeof setShowHistory
     });
     
+    // Try to restore products from session storage
+    const savedProducts = sessionStorage.getItem('bofu_edited_products');
+    if (savedProducts) {
+      try {
+        const parsedProducts = JSON.parse(savedProducts);
+        if (Array.isArray(parsedProducts) && parsedProducts.length > 0) {
+          setEditedProducts(parsedProducts);
+          console.log("Restored products from session storage:", parsedProducts.length);
+        }
+      } catch (error) {
+        console.error("Error parsing saved products:", error);
+      }
+    }
+    
     return () => {
       console.log("ProductResultsPage unmounting");
     };
   }, [products, showHistory, setShowHistory]);
+
+  // Update the products state when props change
+  React.useEffect(() => {
+    if (products.length > 0 && JSON.stringify(products) !== JSON.stringify(editedProducts)) {
+      console.log("Updating editedProducts from props:", products.length);
+      setEditedProducts(products);
+      
+      // Also save to session storage immediately
+      sessionStorage.setItem('bofu_edited_products', JSON.stringify(products));
+    }
+  }, [products]);
+
+  // Save products to session storage whenever they change
+  React.useEffect(() => {
+    if (editedProducts.length > 0) {
+      sessionStorage.setItem('bofu_edited_products', JSON.stringify(editedProducts));
+      console.log("Saved products to session storage:", editedProducts.length);
+      
+      // Notify parent component of the changes
+      // This ensures App.tsx knows about the product changes
+      if (editedProducts !== products) {
+        window.dispatchEvent(new CustomEvent('productsUpdated', { 
+          detail: { products: editedProducts } 
+        }));
+      }
+    }
+  }, [editedProducts, products]);
+
+  // Handle product updates (when editing a field)
+  const updateProduct = (index: number, updatedProduct: ProductAnalysis) => {
+    setEditedProducts((prev) => {
+      const updatedProducts = [...prev];
+      updatedProducts[index] = updatedProduct;
+      
+      // Immediately save to session storage
+      sessionStorage.setItem('bofu_edited_products', JSON.stringify(updatedProducts));
+      
+      return updatedProducts;
+    });
+  };
+
+  // Add visibility change handler with focus on tab switching
+  React.useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Try to restore products when tab becomes visible
+        const savedProducts = sessionStorage.getItem('bofu_edited_products');
+        if (savedProducts) {
+          try {
+            const parsedProducts = JSON.parse(savedProducts);
+            if (Array.isArray(parsedProducts) && parsedProducts.length > 0) {
+              console.log("Tab visible: Restoring products from session storage:", parsedProducts.length);
+              setEditedProducts(parsedProducts);
+              
+              // Force the tab to stay in results view
+              window.setTimeout(() => {
+                document.title = "Product Results - BOFU AI";
+                // Dispatch an event that App.tsx can listen for
+                window.dispatchEvent(new CustomEvent('forceResultsView', { 
+                  detail: { products: parsedProducts } 
+                }));
+              }, 100);
+            }
+          } catch (error) {
+            console.error("Error parsing saved products on visibility change:", error);
+          }
+        }
+      } else if (document.visibilityState === 'hidden') {
+        // Save current state when tab becomes hidden
+        if (editedProducts.length > 0) {
+          console.log("Tab hidden: Saving current products to session storage:", editedProducts.length);
+          sessionStorage.setItem('bofu_edited_products', JSON.stringify(editedProducts));
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [editedProducts]);
 
   // Fix products with missing details
   React.useEffect(() => {
@@ -290,6 +403,53 @@ function ProductResultsPage({
     setEditedProducts(newProducts);
   };
 
+  // Add a new effect to handle history navigation
+  React.useEffect(() => {
+    const handleHistoryNavigation = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      
+      console.log("History navigation event received in ProductResultsPage");
+      
+      // Save current products state to session storage before navigation
+      if (editedProducts.length > 0) {
+        sessionStorage.setItem('bofu_edited_products', JSON.stringify(editedProducts));
+        console.log("Saved products before history navigation:", editedProducts.length);
+      }
+      
+      // Update state
+      if (setShowHistory) {
+        setShowHistory(true);
+      }
+      
+      // Don't prevent default navigation
+      if (forceHistoryView) {
+        console.log("Forcing history view from product results");
+        forceHistoryView();
+      }
+    };
+
+    // Listen for history view changes
+    window.addEventListener('historyViewChange', handleHistoryNavigation);
+
+    return () => {
+      window.removeEventListener('historyViewChange', handleHistoryNavigation);
+    };
+  }, [setShowHistory, forceHistoryView, editedProducts]);
+
+  // Add effect to handle page unload
+  React.useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Save current state before unload
+      if (editedProducts.length > 0) {
+        sessionStorage.setItem('bofu_edited_products', JSON.stringify(editedProducts));
+        console.log("Saved products before unload:", editedProducts.length);
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [editedProducts]);
+
   return (
     <div className="min-h-screen bg-gradient-dark bg-circuit-board">
       {/* Header Section */}
@@ -297,6 +457,16 @@ function ProductResultsPage({
         companyName={editedProducts[0]?.companyName} 
         productCount={editedProducts.length}
         onStartNew={onStartNew}
+        showHistory={showHistory}
+        setShowHistory={(show) => {
+          console.log("Setting history state in ProductResultsPage:", show);
+          if (setShowHistory) {
+            setShowHistory(show);
+          }
+          // Don't handle navigation here - let MainHeader handle it
+        }}
+        forceHistoryView={forceHistoryView}
+        hideHistoryButton={true}
       />
 
       {/* Instructions Panel */}

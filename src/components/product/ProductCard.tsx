@@ -126,20 +126,40 @@ function ProductCard({
     setIsSendingToAirOps(true);
     
     try {
-      // Create a clean copy of the product with required fields
-      const preparedProduct = {
+      // Check if there's a competitorAnalysisUrl we can use
+      let googleDocUrl = product.competitorAnalysisUrl;
+      
+      // If not, use the default public URL from the example
+      if (!googleDocUrl || !googleDocUrl.includes('docs.google.com/document')) {
+        googleDocUrl = "https://docs.google.com/document/d/1qxocRF9_MXzQXnWxTJgteIZGzYbY6vppKlQ4OfqFZ9s";
+        console.log('Using default Google Doc URL:', googleDocUrl);
+      }
+      
+      // Create a product with the required google_doc field
+      const productForAirOps = {
         ...product,
-        // Make sure all required properties exist with correct types
-        competitors: product.competitors || {
-          direct_competitors: [],
-          niche_competitors: [],
-          broader_competitors: []
+        google_doc: googleDocUrl, // Add the Google Doc URL
+        businessOverview: product.businessOverview || {
+          mission: '',
+          industry: '',
+          keyOperations: ''
         },
-        usps: product.usps || [],
-        painPoints: product.painPoints || [],
-        features: product.features || []
+        pricing: product.pricing || '',
+        currentSolutions: product.currentSolutions || {
+          directCompetitors: [],
+          existingMethods: []
+        }
+      } as ProductAnalysis & { google_doc: string };
+      
+      // Log what we're sending
+      console.log('Sending to AirOps with Google Doc URL:', googleDocUrl);
+      
+      // Structure the data in the format expected by AirOps
+      const preparedProduct = {
+        product_card_information: productForAirOps
       };
       
+      console.log('Sending to AirOps:', preparedProduct);
       await sendToAirOps(preparedProduct);
       toast.success('Successfully sent to AirOps workflow');
     } catch (error: any) {
@@ -147,15 +167,16 @@ function ProductCard({
       console.error('Full error details:', error);
       
       if (error.message && error.message.includes('ACCOUNT_LIMITATION')) {
-        // This is the specific free tier limitation error
         toast.error('Your AirOps account needs to be upgraded. Please contact AirOps support.', {
-          duration: 6000, // Show longer for important message
+          duration: 6000,
           icon: '⚠️',
         });
       } else if (error.message && error.message.includes('NetworkError')) {
         toast.error('Network error: Please check your internet connection');
       } else if (error.message && error.message.includes('Failed to fetch')) {
         toast.error('Connection to AirOps failed. This could be due to CORS restrictions.');
+      } else if (error.message && error.message.includes('Invalid Google Doc URL')) {
+        toast.error('AirOps error with Google Doc URL format. Using default URL.');
       } else {
         toast.error(`Failed to send to AirOps: ${error.message || 'Unknown error'}`);
       }
@@ -260,16 +281,34 @@ function ProductCard({
             // Check if the URL is a valid web URL
             try {
               new URL(url);
-              // If it's a valid URL, update the product with it directly
-              const updatedProduct = { 
-                ...product, 
-                competitorAnalysisUrl: url
-              };
-              console.log("Updating product with document URL:", updatedProduct);
-              updateProduct(JSON.parse(JSON.stringify(updatedProduct)));
-              // Automatically save the product after updating
-              onSave(updatedProduct, index);
-              return;
+              // Check if it's a Google Docs URL and format it correctly
+              if (url.includes('docs.google.com/document')) {
+                // Extract the document ID
+                const match = url.match(/\/document\/d\/([a-zA-Z0-9-_]+)/);
+                if (!match) {
+                  toast.error('Invalid Google Docs URL format');
+                  return;
+                }
+                const docId = match[1];
+                
+                // Format the URL in the required format - without suffix
+                const formattedUrl = `https://docs.google.com/document/d/${docId}`;
+                
+                // Update the product with the formatted URL
+                const updatedProduct = { 
+                  ...product, 
+                  competitorAnalysisUrl: formattedUrl,
+                  google_doc: formattedUrl
+                };
+                console.log("Updating product with formatted Google Doc URL:", updatedProduct);
+                updateProduct(JSON.parse(JSON.stringify(updatedProduct)));
+                // Automatically save the product after updating
+                onSave(updatedProduct, index);
+                return;
+              } else {
+                toast.error('Please provide a valid Google Docs URL');
+                return;
+              }
             } catch (e) {
               // If not a valid URL, try parsing as JSON
               try {
@@ -279,15 +318,33 @@ function ProductCard({
                 // If we have a documentUrl in the JSON, use that
                 if (jsonData.documentUrl || jsonData.analysisUrl) {
                   const docUrl = jsonData.documentUrl || jsonData.analysisUrl;
-                  const updatedProduct = { 
-                    ...product, 
-                    competitorAnalysisUrl: docUrl
-                  };
-                  console.log("Updating product with document URL from JSON:", updatedProduct);
-                  updateProduct(JSON.parse(JSON.stringify(updatedProduct)));
-                  // Automatically save the product after updating
-                  onSave(updatedProduct, index);
-                  return;
+                  // Check if it's a Google Docs URL and format it correctly
+                  if (docUrl.includes('docs.google.com/document')) {
+                    // Extract the document ID
+                    const match = docUrl.match(/\/document\/d\/([a-zA-Z0-9-_]+)/);
+                    if (!match) {
+                      toast.error('Invalid Google Docs URL format in response');
+                      return;
+                    }
+                    const docId = match[1];
+                    
+                    // Format the URL in the required format - without suffix
+                    const formattedUrl = `https://docs.google.com/document/d/${docId}`;
+                    
+                    const updatedProduct = { 
+                      ...product, 
+                      competitorAnalysisUrl: formattedUrl,
+                      google_doc: formattedUrl
+                    };
+                    console.log("Updating product with formatted Google Doc URL from JSON:", updatedProduct);
+                    updateProduct(JSON.parse(JSON.stringify(updatedProduct)));
+                    // Automatically save the product after updating
+                    onSave(updatedProduct, index);
+                    return;
+                  } else {
+                    toast.error('Please provide a valid Google Docs URL');
+                    return;
+                  }
                 }
                 
                 // Check if it contains competitor data

@@ -14,6 +14,7 @@ export interface CompetitorsData {
 export interface ProductAnalysis {
   companyName: string;
   competitorAnalysisUrl?: string;
+  google_doc?: string; // URL of the Google Doc published to web
   productDetails: {
     name: string;
     description: string;
@@ -52,6 +53,7 @@ export interface ProductAnalysis {
 export const defaultProduct: ProductAnalysis = {
   companyName: '',
   competitorAnalysisUrl: undefined,
+  google_doc: undefined,
   productDetails: {
     name: '',
     description: ''

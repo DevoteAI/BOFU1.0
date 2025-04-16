@@ -3,6 +3,8 @@ import { motion } from 'framer-motion';
 import { Target, Loader2, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ProductAnalysis, CompetitorsData } from '../types/product/types';
+import { makeWebhookRequest } from '../utils/webhookUtils';
+import { parseProductData } from '../types/product';
 
 interface CompetitorAnalysisButtonProps {
   onAnalysisComplete: (documentUrl: string) => void;
@@ -33,12 +35,9 @@ export function CompetitorAnalysisButton({ product, onAnalysisComplete, onCompet
     try {
       console.log("Sending request to webhook with product:", product);
       
-      const response = await fetch('https://hook.us2.make.com/n4kuyrqovr1ndwj9nsodio7th70wbm6i', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
+      const response = await makeWebhookRequest(
+        'https://hook.us2.make.com/n4kuyrqovr1ndwj9nsodio7th70wbm6i',
+        {
           product: {
             companyName: product.companyName,
             productName: product.productDetails.name,
@@ -52,166 +51,70 @@ export function CompetitorAnalysisButton({ product, onAnalysisComplete, onCompet
             }))
           },
           requestType: 'competitor_analysis'
-        })
-      });
+        },
+        {
+          timeout: 300000, // 5 minutes
+          maxRetries: 3,
+          retryDelay: 2000
+        }
+      );
 
-      if (!response.ok) {
-        throw new Error('Failed to request competitor analysis');
-      }
+      // Parse the response using our new parser
+      const parsedProducts = parseProductData(response);
       
-      // Check if response is JSON or plain text
-      const contentType = response.headers.get('content-type');
-      let data;
-      
-      if (contentType && contentType.includes('application/json')) {
-        data = await response.json();
+      // If we got any products back, use the first one's data
+      if (parsedProducts.length > 0) {
+        const firstProduct = parsedProducts[0];
         
-        console.log("Received webhook data:", data);
-        
-        // Create a competitors structure regardless of response format
-        // This ensures we always initialize the UI with at least empty arrays
-        let competitors: CompetitorsData = {
-          direct_competitors: [],
-          niche_competitors: [],
-          broader_competitors: []
-        };
-        
-        // Try to extract from the exact JSON format shown in the example
-        if (data && typeof data === 'object') {
-          // Special case for exact format: { company, product, competitors }
-          if (data.company && data.product && data.competitors) {
-            console.log("Found company/product/competitors format in response");
-            
-            if (typeof data.competitors === 'object') {
-              if (Array.isArray(data.competitors.direct_competitors)) {
-                competitors.direct_competitors = [...data.competitors.direct_competitors];
-              }
-              if (Array.isArray(data.competitors.niche_competitors)) {
-                competitors.niche_competitors = [...data.competitors.niche_competitors];
-              }
-              if (Array.isArray(data.competitors.broader_competitors)) {
-                competitors.broader_competitors = [...data.competitors.broader_competitors];
-              }
-            }
-          } 
-          // Check for any other format that might have competitors
-          else if (data.competitors && typeof data.competitors === 'object') {
-            console.log("Found competitors object in response");
-            
-            if (Array.isArray(data.competitors.direct_competitors)) {
-              competitors.direct_competitors = [...data.competitors.direct_competitors];
-            }
-            if (Array.isArray(data.competitors.niche_competitors)) {
-              competitors.niche_competitors = [...data.competitors.niche_competitors];
-            }
-            if (Array.isArray(data.competitors.broader_competitors)) {
-              competitors.broader_competitors = [...data.competitors.broader_competitors];
-            }
-          }
-          
-          // If we have documentUrl that contains a JSON string with competitor data
-          if (data.documentUrl && typeof data.documentUrl === 'string') {
-            try {
-              // Try to parse it as JSON first
-              const docUrlData = JSON.parse(data.documentUrl);
-              console.log("Parsed documentUrl as JSON:", docUrlData);
-              
-              if (docUrlData.competitors && typeof docUrlData.competitors === 'object') {
-                if (Array.isArray(docUrlData.competitors.direct_competitors)) {
-                  competitors.direct_competitors = [...docUrlData.competitors.direct_competitors];
-                }
-                if (Array.isArray(docUrlData.competitors.niche_competitors)) {
-                  competitors.niche_competitors = [...docUrlData.competitors.niche_competitors];
-                }
-                if (Array.isArray(docUrlData.competitors.broader_competitors)) {
-                  competitors.broader_competitors = [...docUrlData.competitors.broader_competitors];
-                }
-                console.log("Extracted competitors from documentUrl:", competitors);
-              }
-            } catch (e) {
-              console.log("documentUrl is not a valid JSON string:", e);
-            }
-          }
-          
-          // Always call onCompetitorsReceived with our competitors structure
-          console.log("Sending competitors to UI:", competitors);
-          onCompetitorsReceived?.(competitors);
+        // If the product has competitors data, send it to the parent
+        if (firstProduct.competitors && onCompetitorsReceived) {
+          onCompetitorsReceived(firstProduct.competitors);
         }
         
-        // Handle document URL separately
-        if (data.documentUrl) {
-          onAnalysisComplete(data.documentUrl);
+        // If the product has a competitor analysis URL, send it to the parent
+        if (firstProduct.competitorAnalysisUrl) {
+          onAnalysisComplete(firstProduct.competitorAnalysisUrl);
         }
       } else {
-        // Try to parse plain text response as JSON first, it might be JSON without proper content-type
-        const textResponse = await response.text();
-        try {
-          const jsonData = JSON.parse(textResponse);
-          console.log("Parsed text response as JSON:", jsonData);
-          
-          // Extract competitors if available
-          let competitors: CompetitorsData = {
-            direct_competitors: [],
-            niche_competitors: [],
-            broader_competitors: []
-          };
-          
-          if (jsonData.competitors && typeof jsonData.competitors === 'object') {
-            if (Array.isArray(jsonData.competitors.direct_competitors)) {
-              competitors.direct_competitors = [...jsonData.competitors.direct_competitors];
-            }
-            if (Array.isArray(jsonData.competitors.niche_competitors)) {
-              competitors.niche_competitors = [...jsonData.competitors.niche_competitors];
-            }
-            if (Array.isArray(jsonData.competitors.broader_competitors)) {
-              competitors.broader_competitors = [...jsonData.competitors.broader_competitors];
-            }
-            console.log("Extracted competitors from text response:", competitors);
-            onCompetitorsReceived?.(competitors);
-          }
-          
-          // Handle document URL if available
-          if (jsonData.documentUrl) {
-            onAnalysisComplete(jsonData.documentUrl);
+        // If no products were parsed, check the raw response for a URL
+        if (typeof response === 'string' && response.includes('docs.google.com')) {
+          onAnalysisComplete(response.trim());
+        } else if (typeof response === 'object') {
+          const url = response.analysisUrl || response.documentUrl || response.url;
+          if (url && typeof url === 'string' && url.includes('docs.google.com')) {
+            onAnalysisComplete(url.trim());
           } else {
-            // Use the entire response as the document URL if no specific URL is provided
-            onAnalysisComplete(textResponse);
+            throw new Error('No valid analysis URL found in response');
           }
-        } catch (e) {
-          console.log("Text response is not valid JSON, using as-is:", e);
-          onAnalysisComplete(textResponse);
+        } else {
+          throw new Error('Invalid response format');
         }
       }
-      
-      toast.success('Competitor analysis request sent successfully!', { id: loadingToast });
+
+      toast.success('Competitor analysis completed');
     } catch (error) {
-      console.error('Error requesting competitor analysis:', error);
-      toast.error('Failed to request competitor analysis. Please try again.', { id: loadingToast });
+      console.error('Error in competitor analysis:', error);
+      toast.error(`Failed to analyze competitors: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
+      toast.dismiss(loadingToast);
     }
   };
 
   return (
     <motion.button
-      onClick={handleCompetitorAnalysis}
-      disabled={isLoading}
-      className="px-3 py-1.5 flex items-center gap-2 bg-primary-500 text-secondary-900 font-medium rounded-lg hover:bg-primary-400 transition-all 
-        shadow-glow hover:shadow-glow-strong disabled:opacity-50 disabled:cursor-not-allowed"
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
+      onClick={handleCompetitorAnalysis}
+      disabled={isLoading}
+      className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
     >
       {isLoading ? (
-        <>
-          <div className="w-4 h-4 border-2 border-secondary-900 border-t-transparent rounded-full animate-spin"></div>
-          <span>Analyzing...</span>
-        </>
+        <Loader2 className="w-4 h-4 animate-spin" />
       ) : (
-        <>
-          <Target className="w-4 h-4" />
-          <span>Identify Competitors</span>
-        </>
+        <Target className="w-4 h-4" />
       )}
+      Analyze Competitors
     </motion.button>
   );
 }

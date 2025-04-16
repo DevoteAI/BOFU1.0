@@ -10,7 +10,6 @@ export interface ScrapedBlog {
 }
 
 // Initialize the OpenAI client
-// In a production environment, the API key should be stored in environment variables
 const openai = new OpenAI({
   apiKey: import.meta.env.VITE_OPENAI_API_KEY || 'Your API Key Here',
   dangerouslyAllowBrowser: true // Only for demo purposes, in production use server-side API calls
@@ -37,23 +36,33 @@ export async function scrapeBlogContent(url: string): Promise<ScrapedBlog> {
     const response = await openai.chat.completions.create({
       model: "gpt-4o-search-preview",
       web_search_options: {
-        search_context_size: "medium", // Balance between quality and speed
+        search_context_size: "high", // Using high to ensure we get full content
       },
       messages: [
         {
           role: "system",
-          content: "You are a helpful assistant that extracts and summarizes blog content."
+          content: "You are a content extraction assistant. Your task is to visit the provided URL and extract its content accurately. Do not summarize from search results - only extract content from the specific URL provided."
         },
         {
           role: "user",
-          content: `Visit this blog URL: ${url} and extract the full content. 
-          - Include the title, author (if available), and publication date (if available)
-          - Extract the entire text content faithfully
-          - Preserve the structure (headers, paragraphs, lists)
-          - Skip any comments, ads, and unrelated sections
-          - Format the content with proper markdown: use ## for headings, * for bullet points, etc.
-          - Include a summary at the top (100 words max)
-          `
+          content: `Please visit and extract the content from this exact URL: "${url}". Do not search for similar content or summarize from search results. I need the actual content from this specific webpage.
+
+Instructions:
+1. Visit the exact URL provided
+2. Extract the complete article/blog post content
+3. Include:
+   - Title
+   - Author (if available)
+   - Publication date (if available)
+   - Full article text
+4. Format in markdown
+5. Do not include:
+   - Comments
+   - Advertisements
+   - Navigation elements
+   - Sidebars
+   
+If you cannot access the specific URL, please indicate that clearly in your response.`
         }
       ],
     });
@@ -72,7 +81,25 @@ export async function scrapeBlogContent(url: string): Promise<ScrapedBlog> {
         };
       }
       return null;
-    }).filter(Boolean) as Array<{url: string; title: string;}> || [];
+    }).filter((citation): citation is {url: string; title: string} => citation !== null) || [];
+
+    // If the content indicates inability to access the URL
+    if (content.toLowerCase().includes("unable to access") || 
+        content.toLowerCase().includes("cannot access") ||
+        content.toLowerCase().includes("isn't available")) {
+      return {
+        url,
+        title: url,
+        content: `Error: Could not access the content at ${url}. This might be because:\n\n` +
+                `1. The page requires authentication\n` +
+                `2. The page is blocking automated access\n` +
+                `3. The URL might be incorrect\n` +
+                `4. The page might be temporarily unavailable\n\n` +
+                `Please verify the URL and try again.`,
+        error: "Could not access content",
+        status: 'error'
+      };
+    }
 
     // Extract a title from the content (usually the first line)
     const title = content.split('\n')[0].replace(/^#+ /, '').trim() || 
@@ -86,6 +113,7 @@ export async function scrapeBlogContent(url: string): Promise<ScrapedBlog> {
       citations,
       status: 'scraped'
     };
+
   } catch (error) {
     console.error(`Error extracting content from ${url}:`, error);
     

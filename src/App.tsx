@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster, toast } from 'react-hot-toast';
 import { AuthModal } from './components/auth/AuthModal';
@@ -11,11 +11,13 @@ import { BlogLinkInput } from './components/BlogLinkInput';
 import { ProductLineInput } from './components/ProductLineInput';
 import { SubmitSection } from './components/SubmitSection';
 import { ProductResultsPage } from './components/ProductResultsPage';
-import { ProductAnalysis, parseWebhookResponse } from './types/product/index';
+import { ProductAnalysis, parseProductData } from './types/product/index';
 import { ProcessingModal } from './components/ProcessingModal';
 import { ResearchResult, getResearchResults, deleteResearchResult, getResearchResultById } from './lib/research';
 import { AdminAuthModal } from './components/admin/AdminAuthModal';
 import { AdminDashboard } from './components/admin/AdminDashboard';
+import { scrapeBlogContent } from './utils/blogScraper';
+import { makeWebhookRequest } from './utils/webhookUtils';
 
 // Create a type for the history item in case it's different from what the ResearchResult type expects
 interface HistoryItem {
@@ -54,6 +56,8 @@ export default function App() {
   const [currentView, setCurrentView] = useState<'auth' | 'main' | 'history' | 'results' | 'admin'>('auth');
   // Keep track of when tab visibility changes
   const [wasVisible, setWasVisible] = useState<boolean>(document.visibilityState === 'visible');
+  // Add this right after the wasVisible state declaration
+  const [isRestoringState, setIsRestoringState] = useState(false);
   
   console.log('App state initialized', { currentView, user: !!user, showAuthModal });
 
@@ -327,306 +331,152 @@ export default function App() {
     };
   }, []);
 
-  // Effect to persist and restore app state when tab focus changes
-  useEffect(() => {
-    // Function to save the current state to localStorage
-    const saveStateToStorage = () => {
-      const stateToSave = {
-        currentView,
-        currentResearchId,
-        showHistory,
-        // Add more detailed state information
-        lastView: currentView === 'history' ? 'history' : currentView, // Track history view explicitly
-        // For results view, explicitly track that we're viewing results
-        isViewingResults: currentView === 'results',
-        // Tracking if we're viewing a product card from history
-        isProductCardFromHistory: currentView === 'results' && showHistory,
-        fromHistory: showHistory && currentView === 'results',
-        // Add other important state variables as needed
-      };
-      localStorage.setItem('bofu_app_state', JSON.stringify(stateToSave));
-      console.log('App state saved to localStorage:', stateToSave);
-    };
+  // Replace the existing handleVisibilityChange function
+  const handleVisibilityChange = useCallback(() => {
+    const isVisible = document.visibilityState === 'visible';
+    console.log('Visibility changed:', { isVisible, wasVisible });
 
-    // Function to restore state from localStorage
-    const restoreStateFromStorage = async () => {
+    if (isVisible && !wasVisible) {
+      setIsRestoringState(true);
       try {
-        const savedState = localStorage.getItem('bofu_app_state');
-        if (savedState) {
-          const parsedState = JSON.parse(savedState);
-          console.log('Restoring app state from localStorage:', parsedState);
-          
-          // Only restore state if user is authenticated
-          if (user) {
-            // Priority #1: If we were viewing results, restore that first
-            if (parsedState.isViewingResults || parsedState.currentView === 'results') {
-              console.log('Restoring results view');
-              
-              // If we have a research ID, load that data
-              if (parsedState.currentResearchId) {
-                // Check if we already have the data loaded
-                if (!analysisResults.length || currentResearchId !== parsedState.currentResearchId) {
-                  console.log('Loading research data for restored results view:', parsedState.currentResearchId);
-                  try {
-                    // Fetch the data from the database
-                    const fullResult = await getResearchResultById(parsedState.currentResearchId);
-                    if (fullResult) {
-                      setAnalysisResults(fullResult.data || []);
-                      setCurrentResearchId(fullResult.id);
-                      // Important: Set the current view AFTER loading data
-                      setCurrentView('results');
-                      return; // Exit early to prevent history view from overriding
-                    } else {
-                      console.error('Could not load research data for ID:', parsedState.currentResearchId);
-                    }
-                  } catch (error) {
-                    console.error('Error loading research data:', error);
-                  }
-                } else {
-                  // We already have the data, just restore the view
-                  setCurrentView('results');
-                  return; // Exit early
-                }
-              } else if (analysisResults.length > 0) {
-                // We have results but no ID (unsaved analysis)
-                setCurrentView('results');
-                return; // Exit early
-              }
-            }
-            
-            // Priority #2: Handle history view if not viewing results
-            if (parsedState.lastView === 'history' || parsedState.currentView === 'history') {
-              console.log('Restoring history view');
-              setCurrentView('history');
-              setShowHistory(true);
-              
-              // Make sure we have history data loaded
-              await loadHistory();
-              return; // Exit early
-            } 
-            
-            // Priority #3: Handle other views
-            if (parsedState.currentView && parsedState.currentView !== 'auth') {
-              setCurrentView(parsedState.currentView);
-            }
-            
-            // Restore other state as needed
-            if (parsedState.currentResearchId) {
-              setCurrentResearchId(parsedState.currentResearchId);
-            }
-            
-            if (parsedState.showHistory !== undefined) {
-              setShowHistory(parsedState.showHistory);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error restoring state from localStorage:', error);
-      }
-    };
-
-    // Create a dedicated function to detect and save the current view state
-    const saveViewState = () => {
-      try {
-        // Store the current view state in session storage (which persists only for the current tab)
-        // This ensures we maintain view state even during page reloads or tab visibility changes
-        sessionStorage.setItem('bofu_current_view', currentView);
+        // Restore view state
+        const savedViewState = sessionStorage.getItem('bofu_current_view');
+        const savedResearchId = sessionStorage.getItem('bofu_research_id');
+        const savedProducts = sessionStorage.getItem('bofu_edited_products');
+        const wasViewingResults = sessionStorage.getItem('bofu_viewing_results') === 'true';
         
-        // Store information for all views, not just results
-        if (currentView === 'results') {
-          sessionStorage.setItem('bofu_viewing_results', 'true');
-          if (currentResearchId) {
-            sessionStorage.setItem('bofu_research_id', currentResearchId);
-          }
-          
-          // Store additional state about where we came from
-          if (showHistory) {
-            sessionStorage.setItem('bofu_came_from_history', 'true');
-          } else {
-            sessionStorage.removeItem('bofu_came_from_history');
-          }
-        } else if (currentView === 'history') {
-          sessionStorage.setItem('bofu_viewing_history', 'true');
-        } else if (currentView === 'admin') {
-          sessionStorage.setItem('bofu_viewing_admin', 'true');
-        } else if (currentView === 'main') {
-          sessionStorage.setItem('bofu_viewing_main', 'true');
-          sessionStorage.setItem('bofu_active_step', activeStep.toString());
-        }
-        
-        // Clear any flags that don't apply to current view
-        if (currentView !== 'results') sessionStorage.removeItem('bofu_viewing_results');
-        if (currentView !== 'history') sessionStorage.removeItem('bofu_viewing_history');
-        if (currentView !== 'admin') sessionStorage.removeItem('bofu_viewing_admin');
-        if (currentView !== 'main') sessionStorage.removeItem('bofu_viewing_main');
-        
-        console.log('🔒 View state saved to sessionStorage:', { currentView, researchId: currentResearchId, showHistory });
-      } catch (error) {
-        console.error('Error saving view state to sessionStorage:', error);
-      }
-    };
+        console.log('Restoring state on visibility change:', {
+          savedViewState,
+          savedResearchId,
+          hasProducts: !!savedProducts,
+          wasViewingResults
+        });
 
-    // Save state when view changes
-    saveStateToStorage();
-    // Also save to session storage
-    saveViewState();
-
-    // Setup visibility change listener to restore state when tab regains focus
-    const handleVisibilityChange = () => {
-      const isVisible = document.visibilityState === 'visible';
-      
-      // Only trigger actions when visibility actually changes
-      if (isVisible !== wasVisible) {
-        if (isVisible) {
-          console.log('🔄 Tab regained focus, checking stored session state');
-          
+        // If we were viewing results, restore that state
+        if (wasViewingResults && savedProducts) {
           try {
-            // First check session storage for the current tab's specific view
-            const savedViewState = sessionStorage.getItem('bofu_current_view');
-            const wasViewingResults = sessionStorage.getItem('bofu_viewing_results') === 'true';
-            const wasViewingHistory = sessionStorage.getItem('bofu_viewing_history') === 'true';
-            const wasViewingAdmin = sessionStorage.getItem('bofu_viewing_admin') === 'true';
-            const wasViewingMain = sessionStorage.getItem('bofu_viewing_main') === 'true';
-            const savedResearchId = sessionStorage.getItem('bofu_research_id');
-            const savedActiveStep = sessionStorage.getItem('bofu_active_step');
-            const cameFromHistory = sessionStorage.getItem('bofu_came_from_history') === 'true';
-            
-            console.log('📊 Session storage state:', { 
-              savedViewState, 
-              wasViewingResults, 
-              wasViewingHistory,
-              wasViewingAdmin,
-              wasViewingMain,
-              savedResearchId,
-              savedActiveStep,
-              cameFromHistory,
-              currentView
-            });
-            
-            // Check if we need to restore the product card from history
-            // Handle special case where we should be seeing results (from history) but are in history view
-            if (wasViewingResults && cameFromHistory && currentView === 'history' && savedResearchId) {
-              console.log('🔍 Restoring product card view from history');
-              
-              // Small delay to ensure component is fully mounted
-              setTimeout(async () => {
-                try {
-                  const fullResult = await getResearchResultById(savedResearchId);
-                  if (fullResult) {
-                    setAnalysisResults(fullResult.data || []);
-                    setCurrentResearchId(savedResearchId);
-                    setCurrentView('results');
-                    setShowHistory(true);
-                    console.log('✅ Successfully restored product card view from history');
-                  }
-                } catch (error: any) {
-                  console.error('❌ Error restoring product card view:', error);
-                }
+            const parsedProducts = JSON.parse(savedProducts);
+            if (Array.isArray(parsedProducts) && parsedProducts.length > 0) {
+              // Important: Set the same state as what's shown in results view
+              setAnalysisResults(parsedProducts);
+              setCurrentView('results');
+              if (savedResearchId) {
+                setCurrentResearchId(savedResearchId);
+              }
+              // Make sure the view doesn't accidentally revert
+              // This is critical for preventing the home page redirect
+              window.setTimeout(() => {
+                // Double-check view state after React renders
+                document.title = "Product Results - BOFU AI";
+                console.log('Reinforced results view after tab switch');
               }, 100);
-              
-              return; // Skip other checks
-            }
-            
-            // First check if we need to restore the view at all
-            if (savedViewState && savedViewState !== currentView) {
-              console.log(`🔍 Need to restore ${savedViewState} view from session state (current: ${currentView})`);
-              
-              // Handle results view restoration
-              if (savedViewState === 'results' || wasViewingResults) {
-                // If we have a research ID and we're not already showing those results
-                if (savedResearchId && (savedResearchId !== currentResearchId || currentView !== 'results')) {
-                  // Small delay to ensure component is fully mounted
-                  setTimeout(async () => {
-                    try {
-                      const fullResult = await getResearchResultById(savedResearchId);
-                      if (fullResult) {
-                        setAnalysisResults(fullResult.data || []);
-                        setCurrentResearchId(savedResearchId);
-                        setCurrentView('results');
-                        
-                        // If this result was opened from history, preserve that state
-                        if (cameFromHistory) {
-                          setShowHistory(true);
-                        }
-                        
-                        console.log('✅ Successfully restored results view with data');
-                      }
-                    } catch (error: any) {
-                      console.error('❌ Error restoring results view:', error);
-                    }
-                  }, 100);
-                } 
-                // If we already have results loaded, just make sure we're in results view
-                else if (analysisResults.length > 0) {
-                  setCurrentView('results');
-                  
-                  // If this result was opened from history, preserve that state
-                  if (cameFromHistory) {
-                    setShowHistory(true);
-                  }
-                }
-              } 
-              // Handle history view restoration
-              else if (savedViewState === 'history' || wasViewingHistory) {
-                console.log('🔍 Restoring history view from session state');
-                setCurrentView('history');
-                setShowHistory(true);
-                // Refresh history data
-                setTimeout(() => {
-                  loadHistory().catch(err => console.error("Error loading history:", err));
-                }, 100);
-              }
-              // Handle admin view restoration
-              else if (savedViewState === 'admin' || wasViewingAdmin) {
-                console.log('🔍 Restoring admin view from session state');
-                if (isAdmin) {
-                  setCurrentView('admin');
-                }
-              }
-              // Handle main view restoration 
-              else if (savedViewState === 'main' || wasViewingMain) {
-                console.log('🔍 Restoring main view from session state');
-                setCurrentView('main');
-                if (savedActiveStep) {
-                  setActiveStep(parseInt(savedActiveStep, 10) || 1);
-                }
-              }
-              
-              return; // Skip the localStorage check since we've handled this case
-            } else {
-              console.log('📊 No session state changes needed, current view matches saved view');
             }
           } catch (error) {
-            console.error('Error reading session storage:', error);
+            console.error('Error parsing saved products:', error);
           }
-          
-          // If we don't have session-specific state, fall back to localStorage
-          setTimeout(() => {
-            restoreStateFromStorage().catch((error: any) => {
-              console.error('Error in visibility change handler:', error);
-            });
-          }, 100);
-        } else {
-          console.log('💤 Tab lost focus, saving current view state');
-          // Save state when tab loses focus
-          saveStateToStorage();
-          // Also save to session storage for this specific tab
-          saveViewState();
         }
         
-        // Update the visibility tracking state
-        setWasVisible(isVisible);
+        // Restore the appropriate view
+        if (savedViewState) {
+          setCurrentView(savedViewState as 'auth' | 'main' | 'history' | 'results' | 'admin');
+          
+          // Make sure we're not accidentally in auth view when user is logged in
+          if (savedViewState === 'auth' && user) {
+            console.log('Avoiding invalid auth view for logged in user');
+            setCurrentView('main');
+          }
+          
+          // Ensure we're restoring the history context properly
+          if (savedViewState === 'results' && sessionStorage.getItem('bofu_came_from_history') === 'true') {
+            setShowHistory(true);
+          }
+        }
+      } catch (error) {
+        console.error('Error restoring state:', error);
+      } finally {
+        setIsRestoringState(false);
       }
-    };
+    }
+    
+    // Always track the current visibility state
+    setWasVisible(isVisible);
+    
+    // When becoming visible, force a window.focus() event to help ensure React handles the state properly
+    if (isVisible) {
+      window.focus();
+    }
+  }, [wasVisible, user]);
 
-    // Add event listener for visibility change
+  // Add this effect to save state when view changes or products change
+  useEffect(() => {
+    if (!isRestoringState) {
+      console.log('Saving current view state:', currentView);
+      sessionStorage.setItem('bofu_current_view', currentView);
+      sessionStorage.setItem('bofu_viewing_results', (currentView === 'results').toString());
+      
+      if (currentView === 'results' && analysisResults.length > 0) {
+        // Critical: Save the actual product data to session storage
+        sessionStorage.setItem('bofu_edited_products', JSON.stringify(analysisResults));
+        console.log('Saved products to session storage during view change:', analysisResults.length);
+      }
+      
+      if (currentResearchId) {
+        sessionStorage.setItem('bofu_research_id', currentResearchId);
+      }
+      
+      // Save history context
+      if (showHistory) {
+        sessionStorage.setItem('bofu_came_from_history', 'true');
+      } else {
+        sessionStorage.removeItem('bofu_came_from_history');
+      }
+      
+      // For admin and history views
+      if (currentView === 'admin') {
+        sessionStorage.setItem('bofu_viewing_admin', 'true');
+      } else {
+        sessionStorage.removeItem('bofu_viewing_admin');
+      }
+      
+      if (currentView === 'history') {
+        sessionStorage.setItem('bofu_viewing_history', 'true');
+      } else {
+        sessionStorage.removeItem('bofu_viewing_history');
+      }
+      
+      console.log('Saved state on view/content change:', {
+        currentView,
+        hasResults: analysisResults.length > 0,
+        currentResearchId,
+        showHistory
+      });
+    }
+  }, [currentView, analysisResults, currentResearchId, isRestoringState, showHistory]);
+
+  // Save products to session storage independently whenever they change
+  useEffect(() => {
+    if (analysisResults.length > 0 && !isRestoringState) {
+      sessionStorage.setItem('bofu_edited_products', JSON.stringify(analysisResults));
+      console.log('Saved products to session storage on data change:', analysisResults.length);
+      
+      // Also update the current view if we haven't set it yet
+      if (currentView !== 'results') {
+        console.log('Setting view to results because we have products');
+        setCurrentView('results');
+        sessionStorage.setItem('bofu_current_view', 'results');
+        sessionStorage.setItem('bofu_viewing_results', 'true');
+      }
+    }
+  }, [analysisResults, currentView, isRestoringState]);
+
+  // Add visibility change listener with proper dependency handling
+  useEffect(() => {
+    console.log('Setting up visibility change listener');
     document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    // Clean up
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [currentView, currentResearchId, showHistory, user, analysisResults, wasVisible]);
+  }, [handleVisibilityChange]);
 
   // Load research history when component mounts
   useEffect(() => {
@@ -743,97 +593,89 @@ export default function App() {
     setIsSubmitting(true);
 
     try {
+      // First process all blog links to extract their content
+      const processedBlogs = await Promise.all(
+        blogLinks.map(async (url) => {
+          try {
+            const result = await scrapeBlogContent(url);
+            return {
+              url: result.url,
+              content: result.content,
+              title: result.title,
+              type: 'blog'
+            };
+          } catch (error) {
+            console.error(`Failed to process blog: ${url}`, error);
+            return {
+              url,
+              content: `Failed to extract content from ${url}`,
+              title: url,
+              type: 'blog'
+            };
+          }
+        })
+      );
+
       // Prepare the payload for the webhook - limit content size for large documents
       const payload = {
-        documents: documents.map(doc => ({
-          name: doc.name,
-          // Strictly limit document content to 50KB to prevent processing errors
-          content: doc.content.length > 50000 ? doc.content.substring(0, 50000) + "... (content truncated)" : doc.content,
-          type: doc.type
-        })),
-        // Limit the number of inputs to prevent processing errors
-        blogLinks: blogLinks.slice(0, 10), 
+        documents: [
+          ...documents.map(doc => ({
+            name: doc.name,
+            // Strictly limit document content to 50KB to prevent processing errors
+            content: doc.content.length > 50000 ? doc.content.substring(0, 50000) + "... (content truncated)" : doc.content,
+            type: doc.type
+          })),
+          // Add processed blog content as documents
+          ...processedBlogs.map(blog => ({
+            name: blog.title,
+            content: blog.content.length > 50000 ? blog.content.substring(0, 50000) + "... (content truncated)" : blog.content,
+            type: 'blog'
+          }))
+        ],
+        // Include original blog URLs for reference
+        blogLinks: blogLinks.slice(0, 10),
         productLines: productLines.slice(0, 10)
       };
 
       // Send data to webhook
-      const response = await fetch('https://hook.us2.make.com/dmgxx97dencaquxi9vr9khxrr71kotpm', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        throw new Error(`Server responded with status: ${response.status}`);
-      }
-
-      // Get the response as text first to inspect it
-      const responseText = await response.text();
-      
-      // Split the response by the separator line
-      const jsonObjects = responseText.split('------------------------');
-      console.log(`Found ${jsonObjects.length} JSON objects separated by delimiter`);
-      
-      // Process each JSON object separately
-      const results: ProductAnalysis[] = [];
-
-      for (const jsonStr of jsonObjects) {
-          try {
-            // Clean up the JSON string
-            const cleaned = jsonStr
-              .replace(/```json/g, '') // Remove JSON code block markers
-              .replace(/```/g, '')     // Remove remaining code block markers
-            .trim();                 // Remove extra whitespace
-          
-          // Only attempt to parse if we have content
-          if (cleaned.length === 0) continue;
-          
-          // Parse and handle any response formatting issues
-          const parsedResults = parseWebhookResponse(cleaned);
-          if (parsedResults && parsedResults.length > 0) {
-            results.push(...parsedResults);
-          }
-        } catch (err) {
-          console.error('Failed to parse result item:', err, jsonStr);
+      const response = await makeWebhookRequest(
+        'https://hook.us2.make.com/dmgxx97dencaquxi9vr9khxrr71kotpm',
+        payload,
+        {
+          timeout: 30000,
+          maxRetries: 3,
+          retryDelay: 2000
         }
-      }
+      );
+
+      // The response is now the actual result data
+      console.log('Processing webhook response:', response);
+      
+      // Process the response data using the new parser
+      const results = parseProductData(response);
       
       // Set the results
       setAnalysisResults(results);
       setCurrentResearchId(undefined); // Clear previous ID when starting new analysis
       setCurrentView('results');
       
-      // Remove automatic saving of entire collection
-      // Users should explicitly save what they want through the Save button on cards
-      // This prevents duplicate entries in history
-      
-      console.log('Analysis completed - results ready for review. User can now save individual products.');
-
-      // Update state
-      setAnalysisResults(results);
-      setCurrentView('results');
-      setIsSubmitting(false);
-
       // Save this state to localStorage
       const stateToSave = {
         currentView: 'results',
         showHistory: false,
-        isViewingResults: true, // Explicitly mark that we're viewing results
-        lastView: 'results', // Set last view to results
-        // No currentResearchId here because this is a new unsaved result
+        isViewingResults: true,
+        lastView: 'results',
       };
       localStorage.setItem('bofu_app_state', JSON.stringify(stateToSave));
-      
-      // Also save to sessionStorage for tab-specific state
       sessionStorage.setItem('bofu_current_view', 'results');
-      sessionStorage.setItem('bofu_viewing_results', 'true');
-      // Don't set research ID since this is a new unsaved result
-      sessionStorage.removeItem('bofu_research_id');
+
+      setIsSubmitting(false);
+
     } catch (error) {
-      console.error('Error submitting form:', error);
-      toast.error('An error occurred while analyzing the product data.');
+      console.error('Error submitting analysis:', error);
+      toast.error('Failed to submit analysis');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1288,6 +1130,194 @@ export default function App() {
       }
     }
   }, [currentView, showHistory, currentResearchId, user]);
+  
+  // Listen for custom events from ProductResultsPage
+  useEffect(() => {
+    const handleProductsUpdated = (event: CustomEvent) => {
+      const { products } = event.detail;
+      if (Array.isArray(products) && products.length > 0) {
+        console.log('App received productsUpdated event with:', products.length);
+        setAnalysisResults(products);
+      }
+    };
+
+    const handleForceResultsView = (event: CustomEvent) => {
+      const { products } = event.detail;
+      console.log('App received forceResultsView event');
+      
+      if (Array.isArray(products) && products.length > 0) {
+        setAnalysisResults(products);
+      }
+      
+      // Force the view to results
+      setCurrentView('results');
+      
+      // Update session storage
+      sessionStorage.setItem('bofu_current_view', 'results');
+      sessionStorage.setItem('bofu_viewing_results', 'true');
+    };
+
+    // Add event listeners
+    window.addEventListener('productsUpdated', handleProductsUpdated as EventListener);
+    window.addEventListener('forceResultsView', handleForceResultsView as EventListener);
+
+    return () => {
+      // Remove event listeners
+      window.removeEventListener('productsUpdated', handleProductsUpdated as EventListener);
+      window.removeEventListener('forceResultsView', handleForceResultsView as EventListener);
+    };
+  }, []);
+  
+  // Add another event handler for page reloads
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Save state on page reload/navigation
+      if (currentView === 'results' && analysisResults.length > 0) {
+        console.log('Saving state before page unload');
+        
+        // Save products to sessionStorage
+        sessionStorage.setItem('bofu_edited_products', JSON.stringify(analysisResults));
+        sessionStorage.setItem('bofu_current_view', 'results');
+        sessionStorage.setItem('bofu_viewing_results', 'true');
+        
+        // If there's a research ID, save it
+        if (currentResearchId) {
+          sessionStorage.setItem('bofu_research_id', currentResearchId);
+        }
+        
+        // Save history context
+        if (showHistory) {
+          sessionStorage.setItem('bofu_came_from_history', 'true');
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [currentView, analysisResults, currentResearchId, showHistory]);
+  
+  // Add event listener for forceHistoryView custom event
+  useEffect(() => {
+    const handleForceHistoryView = (event: CustomEvent) => {
+      console.log('🔄 Received forceHistoryView event with details:', event.detail);
+      
+      // Force navigation to history view
+      setShowHistory(true);
+      setCurrentView('history');
+      
+      // Load history data
+      loadHistory().catch(error => {
+        console.error('Error loading history data:', error);
+      });
+      
+      // Update local storage
+      try {
+        const savedState = localStorage.getItem('bofu_app_state');
+        if (savedState) {
+          const parsedState = JSON.parse(savedState);
+          parsedState.showHistory = true;
+          parsedState.currentView = 'history';
+          parsedState.lastView = 'history';
+          localStorage.setItem('bofu_app_state', JSON.stringify(parsedState));
+          console.log('Updated localStorage when forcing history view');
+        }
+      } catch (error) {
+        console.error('Error updating localStorage when forcing history view:', error);
+      }
+    };
+    
+    window.addEventListener('forceHistoryView', handleForceHistoryView as EventListener);
+    
+    return () => {
+      window.removeEventListener('forceHistoryView', handleForceHistoryView as EventListener);
+    };
+  }, []);
+  
+  // Add event listener for tab visibility changes
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const isVisible = document.visibilityState === 'visible';
+      console.log('Visibility changed:', { isVisible, wasVisible });
+
+      if (isVisible && !wasVisible) {
+        setIsRestoringState(true);
+        try {
+          // Restore view state
+          const savedViewState = sessionStorage.getItem('bofu_current_view');
+          const savedResearchId = sessionStorage.getItem('bofu_research_id');
+          const savedProducts = sessionStorage.getItem('bofu_edited_products');
+          const wasViewingResults = sessionStorage.getItem('bofu_viewing_results') === 'true';
+          
+          console.log('Restoring state on visibility change:', {
+            savedViewState,
+            savedResearchId,
+            hasProducts: !!savedProducts,
+            wasViewingResults
+          });
+
+          // If we were viewing results, restore that state
+          if (wasViewingResults && savedProducts) {
+            try {
+              const parsedProducts = JSON.parse(savedProducts);
+              if (Array.isArray(parsedProducts) && parsedProducts.length > 0) {
+                // Important: Set the same state as what's shown in results view
+                setAnalysisResults(parsedProducts);
+                setCurrentView('results');
+                if (savedResearchId) {
+                  setCurrentResearchId(savedResearchId);
+                }
+                // Make sure the view doesn't accidentally revert
+                // This is critical for preventing the home page redirect
+                window.setTimeout(() => {
+                  // Double-check view state after React renders
+                  document.title = "Product Results - BOFU AI";
+                  console.log('Reinforced results view after tab switch');
+                }, 100);
+              }
+            } catch (error) {
+              console.error('Error parsing saved products:', error);
+            }
+          }
+          
+          // Restore the appropriate view
+          if (savedViewState) {
+            setCurrentView(savedViewState as 'auth' | 'main' | 'history' | 'results' | 'admin');
+            
+            // Make sure we're not accidentally in auth view when user is logged in
+            if (savedViewState === 'auth' && user) {
+              console.log('Avoiding invalid auth view for logged in user');
+              setCurrentView('main');
+            }
+            
+            // Ensure we're restoring the history context properly
+            if (savedViewState === 'results' && sessionStorage.getItem('bofu_came_from_history') === 'true') {
+              setShowHistory(true);
+            }
+          }
+        } catch (error) {
+          console.error('Error restoring state:', error);
+        } finally {
+          setIsRestoringState(false);
+        }
+      }
+      
+      // Always track the current visibility state
+      setWasVisible(isVisible);
+      
+      // When becoming visible, force a window.focus() event to help ensure React handles the state properly
+      if (isVisible) {
+        window.focus();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [wasVisible, user]);
   
   return (
     <div className="bg-secondary-900 text-white">
