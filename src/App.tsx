@@ -625,9 +625,9 @@ export default function App() {
   
   const handleSubmit = async () => {
     if (isSubmitting) return;
-    
+
     setIsSubmitting(true);
-    
+
     try {
       // Validation
       if (documents.length === 0 && blogLinks.length === 0 && productLines.length === 0) {
@@ -709,7 +709,7 @@ export default function App() {
       sessionStorage.setItem('bofu_current_view', 'results');
       sessionStorage.setItem('bofu_viewing_results', 'true');
       sessionStorage.setItem('bofu_edited_products', JSON.stringify(results));
-      
+
       console.log('Saved app state to storage:', stateToSave);
 
     } catch (error) {
@@ -980,10 +980,10 @@ export default function App() {
     
     // Make sure state is synced
     if (currentView !== 'main' && user) {
-      setCurrentView('main');
+                setCurrentView('main');
       setShowHistory(false);
     }
-    
+
     // Main form view
     return (
       <div className="flex flex-col min-h-screen">
