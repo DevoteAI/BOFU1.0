@@ -182,7 +182,12 @@ export function ResearchHistory({
               key={result.id}
               className="group relative bg-secondary-900 border-2 border-primary-500/20 rounded-xl p-4 shadow-glow hover:shadow-glow-strong 
                 hover:border-primary-500/40 transition-all cursor-pointer"
-              onClick={() => onSelect(result)}
+              onClick={(e) => {
+                e.preventDefault(); // Prevent any default behavior
+                e.stopPropagation(); // Stop event bubbling
+                console.log('Clicking history item:', result.id);
+                onSelect(result);
+              }}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: index * 0.1 }}
@@ -204,7 +209,7 @@ export function ResearchHistory({
                     {result.data[0]?.productDetails?.name || 'Unknown Product'}
                   </p>
                   {/* Show type indicator - single vs collection */}
-                  <div className="mt-2 flex items-center gap-1.5">
+                  <div className="mt-2 flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${result.data.length === 1 ? 'bg-green-500' : 'bg-amber-500'}`}></div>
                     <span className="text-xs text-gray-400">
                       {result.data.length === 1 ? 'Single Product' : 'Product Collection'}
@@ -213,6 +218,7 @@ export function ResearchHistory({
                 </div>
                 <button
                   onClick={(e) => {
+                    e.preventDefault();
                     e.stopPropagation();
                     onDelete(result.id);
                   }}

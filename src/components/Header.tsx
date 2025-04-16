@@ -25,7 +25,7 @@ export function Header() {
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.5, delay: 0.3 }}
         >
-          BOFU AI Research Assistant
+          BOFU ai Research Assistant
         </motion.h1>
         
         <motion.div 

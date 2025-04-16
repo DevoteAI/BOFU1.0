@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { supabase } from '../../lib/supabase';
+import { useNavigate } from 'react-router-dom';
 import { ProductAnalysis } from '../../types/product/types';
 import { ResearchResult, getApprovedProducts, updateApprovedProductStatus, getResearchResultById } from '../../lib/research';
 import { User } from '@supabase/supabase-js';
@@ -42,6 +44,7 @@ interface UserProfile {
 
 // Simplified component - no complex grouping by approver
 export function AdminDashboard({ onLogout }: AdminDashboardProps) {
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingApproved, setIsLoadingApproved] = useState(true);
   const [stats, setStats] = useState({
@@ -283,9 +286,9 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
   const handleLogout = async () => {
     // First sign out
     await supabase.auth.signOut();
-    // Force a hard redirect that ensures a complete page reload
-    window.location.assign('/');
-    // This may not execute due to the redirect but kept for completeness
+    // Use React Router for client-side navigation
+    navigate('/', { replace: true });
+    // This should now execute properly with client-side navigation
     onLogout();
   };
 

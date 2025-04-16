@@ -15,6 +15,40 @@ export async function saveResearchResults(results: ProductAnalysis[], title: str
     // If results is an array with one item, use it directly, otherwise wrap single result in array
     const dataToSave = Array.isArray(results) ? results : [results];
     
+    // Generate a unique fingerprint of this data for logging and duplicate detection
+    const firstProduct = dataToSave[0] || {};
+    const dataFingerprint = `${firstProduct.companyName || ''}-${dataToSave.length}-${Date.now().toString().slice(0, -3)}`;
+    
+    console.log('[research] Saving research results with fingerprint:', dataFingerprint);
+    
+    // Check for recent similar research to avoid duplicates (within last 30 seconds)
+    const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString();
+    const { data: existingEntries, error: fetchError } = await supabase
+      .from('research_results')
+      .select('id, title, data, created_at')
+      .gt('created_at', thirtySecondsAgo)
+      .order('created_at', { ascending: false });
+    
+    if (fetchError) {
+      console.error('[research] Error checking for recent entries:', fetchError);
+    } else if (existingEntries && existingEntries.length > 0) {
+      console.log(`[research] Found ${existingEntries.length} recent entries, checking for duplicates`);
+      
+      // Check if any recent entry matches our data (same company and product count)
+      for (const entry of existingEntries) {
+        const entryData = entry.data;
+        
+        if (Array.isArray(entryData) && 
+            entryData.length === dataToSave.length && 
+            entryData[0]?.companyName === firstProduct.companyName) {
+          
+          console.log(`[research] Found potential duplicate: ${entry.id}, returning this ID instead of creating new entry`);
+          return entry.id;
+        }
+      }
+    }
+    
+    // No duplicates found, proceed with saving
     const { data, error } = await supabase
       .from('research_results')
       .insert({
@@ -27,6 +61,7 @@ export async function saveResearchResults(results: ProductAnalysis[], title: str
       .single();
 
     if (error) throw error;
+    console.log(`[research] Successfully saved research results with ID: ${data.id}`);
     return data.id;
   } catch (error) {
     console.error('Error saving research results:', error);

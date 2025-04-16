@@ -25,7 +25,7 @@ export function SharedHeader({ variant = 'default', productsCount }: SharedHeade
           </div>
           <div className="space-y-1">
             <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary-600 via-secondary-600 to-primary-600 animate-text">
-              BOFU AI
+              BOFU ai
             </h1>
             {variant === 'results' && productsCount !== undefined && (
               <div className="space-y-1">

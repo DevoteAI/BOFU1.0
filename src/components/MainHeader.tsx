@@ -4,7 +4,7 @@ import { Brain, LogIn, History, Home, Book } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { AuthModal } from './auth/AuthModal';
 import { UserMenu } from './auth/UserMenu';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Menu, Transition } from '@headlessui/react';
 import { UserCircleIcon, ClockIcon } from '@heroicons/react/24/outline';
 
@@ -35,6 +35,7 @@ export function MainHeader({
 }: MainHeaderProps) {
   const [showAuthModal, setShowAuthModal] = React.useState(false);
   const [user, setUser] = React.useState(propUser);
+  const navigate = useNavigate();
 
   // Helper function to get display name
   const getDisplayName = (userData: any) => {
@@ -71,11 +72,10 @@ export function MainHeader({
       if (error) throw error;
       console.log("Signed out successfully");
       
-      // Do a hard redirect to force a complete page reload and navigation
-      window.location.assign('/');
+      // Use React Router for client-side navigation
+      navigate('/', { replace: true });
       
-      // These state updates likely won't execute due to the redirect,
-      // but we'll keep them for completeness
+      // These state updates should now properly execute with client-side navigation
       if (onShowAuthModal) {
         onShowAuthModal();
       }
@@ -105,8 +105,35 @@ export function MainHeader({
                   // Prevent default navigation behavior
                   e.preventDefault();
                   
-                  // Always navigate to home page by setting window.location.href
-                  window.location.href = '/';
+                  console.log("Logo clicked, navigating to main view");
+                  
+                  // Update state to show main view
+                  if (setShowHistory) {
+                    setShowHistory(false);
+                  }
+                  
+                  // Update localStorage state
+                  try {
+                    const currentState = localStorage.getItem('bofu_app_state');
+                    const parsedState = currentState ? JSON.parse(currentState) : {};
+                    const updatedState = {
+                      ...parsedState,
+                      showHistory: false,
+                      currentView: 'main',
+                      lastView: 'main'
+                    };
+                    localStorage.setItem('bofu_app_state', JSON.stringify(updatedState));
+                    console.log("Updated localStorage with main view state:", updatedState);
+                  } catch (error) {
+                    console.error("Error updating localStorage:", error);
+                  }
+                  
+                  // Update sessionStorage
+                  sessionStorage.removeItem('bofu_came_from_history');
+                  sessionStorage.setItem('bofu_current_view', 'main');
+                  
+                  // Use React Router for client-side navigation
+                  navigate('/', { replace: true });
                 }}
               >
                 <motion.div
@@ -115,7 +142,7 @@ export function MainHeader({
                 >
                   <Logo />
                 </motion.div>
-                <span className="text-xl font-bold bg-gradient-to-r from-yellow-400 to-primary-400 bg-clip-text text-transparent group-hover:from-yellow-300 group-hover:to-primary-300 transition-all">BOFU AI</span>
+                <span className="text-xl font-bold bg-gradient-to-r from-yellow-400 to-primary-400 bg-clip-text text-transparent group-hover:from-yellow-300 group-hover:to-primary-300 transition-all">BOFU ai</span>
               </Link>
             </motion.div>
           </div>
@@ -162,15 +189,14 @@ export function MainHeader({
                     forceHistoryView();
                   }
 
-                  // Always navigate to history view
-                  // Use a small timeout to ensure state updates have completed
-                  setTimeout(() => {
-                    // Check if we're still not in history view
-                    if (window.location.pathname !== '/history') {
-                      console.log("Forcing navigation to history view");
-                      window.location.href = '/history';
-                    }
-                  }, 50);
+                  // Create a custom event to notify App.tsx
+                  window.dispatchEvent(new CustomEvent('forceHistoryView', { 
+                    detail: { fromHeader: true }
+                  }));
+
+                  // Use React Router for client-side navigation instead of full page reload
+                  console.log("Navigating to history view using React Router");
+                  navigate('/history');
                 }}
                 className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2
                   ${showHistory 

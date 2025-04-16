@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster, toast } from 'react-hot-toast';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { AuthModal } from './components/auth/AuthModal';
 import { supabase } from './lib/supabase';
 import { MainHeader } from './components/MainHeader';
@@ -10,7 +11,7 @@ import { DocumentUploader, ProcessedDocument } from './components/DocumentUpload
 import { BlogLinkInput } from './components/BlogLinkInput';
 import { ProductLineInput } from './components/ProductLineInput';
 import { SubmitSection } from './components/SubmitSection';
-import { ProductResultsPage } from './components/ProductResultsPage';
+import ProductResultsPage from './components/ProductResultsPage';
 import { ProductAnalysis, parseProductData } from './types/product/index';
 import { ProcessingModal } from './components/ProcessingModal';
 import { ResearchResult, getResearchResults, deleteResearchResult, getResearchResultById } from './lib/research';
@@ -36,6 +37,9 @@ interface HistoryItem {
 
 export default function App() {
   console.log('App rendering started');
+  
+  const navigate = useNavigate();
+  const location = useLocation();
   
   const [user, setUser] = React.useState<any>(null);
   const [showAuthModal, setShowAuthModal] = React.useState(true);
@@ -146,6 +150,12 @@ export default function App() {
         currentView: 'history',
         historyCount: researchHistory.length
       });
+      
+      // Ensure URL is updated to match state using React Router
+      if (location.pathname !== '/history') {
+        console.log("URL doesn't match state, navigating to /history");
+        navigate('/history');
+      }
     }, 200);
   };
 
@@ -490,7 +500,27 @@ export default function App() {
   }, [user]);
 
   // Create a loadHistory function that can be called from anywhere in the component
+  // Add debounce control to prevent multiple calls in quick succession
+  let lastHistoryLoadTime = 0;
+  const historyLoadThreshold = 2000; // 2 seconds between loads
+  // Track processed save IDs to prevent duplicate handling
+  const processedSaveIds = new Set<string>();
+  
   const loadHistory = async () => {
+    const now = Date.now();
+    
+    // Skip if called too soon after the last load
+    if (now - lastHistoryLoadTime < historyLoadThreshold) {
+      console.log('🔄 loadHistory called too soon after previous call, skipping', { 
+        timeSinceLastCall: now - lastHistoryLoadTime,
+        threshold: historyLoadThreshold
+      });
+      return;
+    }
+    
+    // Update the timestamp
+    lastHistoryLoadTime = now;
+    
     console.log('🔄 loadHistory function called');
     
     try {
@@ -534,55 +564,89 @@ export default function App() {
   // --- Callback for when ProductResultsPage saves a NEW analysis --- 
   const handleSaveComplete = (newId: string) => {
     console.log(`[App] Received new research ID from ProductResultsPage: ${newId}`);
+    
+    // Check if we've already processed this ID to prevent duplicate history entries
+    if (currentResearchId === newId) {
+      console.log(`[App] Research ID ${newId} already set, ignoring duplicate save`);
+      return;
+    }
+    
+    // Also check against our processed IDs set
+    if (processedSaveIds.has(newId)) {
+      console.log(`[App] Already processed ID ${newId}, ignoring duplicate callback`);
+      return;
+    }
+    
+    // Add to processed IDs set
+    processedSaveIds.add(newId);
+    
     // Just store the ID, do nothing else
     setCurrentResearchId(newId);
+    
     // NO view changes or history navigation
+    
+    // Add a cleanup for the processed IDs set to prevent memory leaks
+    // Clear IDs older than 5 minutes
+    setTimeout(() => {
+      processedSaveIds.delete(newId);
+    }, 300000); // 5 minutes
   };
 
   const handleSelectHistoryItem = async (result: ResearchResult) => {
-    console.log('Selecting history item:', result.id);
+    console.log('Selecting history item:', result.id, 'with data:', result.data);
     
     try {
-      // First, ensure the history panel stays visible when viewing the product
-      setShowHistory(true);
-      
-      // Set the current research ID and load results
-      setCurrentResearchId(result.id);
+      // First set the data in state
       setAnalysisResults(result.data);
-      
-      // Important: Set the view to results after setting other state
-      setCurrentView('results');
-      
-      // Aggressively save this state to both storage mechanisms
-      // to ensure it persists during tab switches
-      
-      // Save to sessionStorage for tab-specific state
+      setCurrentResearchId(result.id);
+
+      // Update storage immediately
+      const stateToSave = {
+        currentView: 'results',
+        currentResearchId: result.id,
+        showHistory: true,
+        isViewingResults: true,
+        lastView: 'results',
+        fromHistory: true,
+        isProductCardFromHistory: true
+      };
+
+      // Update localStorage and sessionStorage
+      localStorage.setItem('bofu_app_state', JSON.stringify(stateToSave));
+      sessionStorage.setItem('bofu_edited_products', JSON.stringify(result.data));
       sessionStorage.setItem('bofu_current_view', 'results');
       sessionStorage.setItem('bofu_viewing_results', 'true');
       sessionStorage.setItem('bofu_research_id', result.id);
       sessionStorage.setItem('bofu_came_from_history', 'true');
-      
-      // Save to localStorage for longer-term persistence
-      const stateToSave = {
-        currentView: 'results',
-        currentResearchId: result.id,
-        showHistory: true, // Keep history context
-        isViewingResults: true, // Explicitly mark that we're viewing results
-        lastView: 'results', // Set last view to results
-        fromHistory: true, // Track that we came from history
-        isProductCardFromHistory: true // Explicit flag for this state
-      };
-      localStorage.setItem('bofu_app_state', JSON.stringify(stateToSave));
-      
-      console.log('🔒 Product view state aggressively saved to both storage mechanisms:', { 
+
+      // Important: Set view states AFTER data is set
+      setCurrentView('results');
+      setShowHistory(true);
+
+      // Navigate only if needed, and do it last
+      if (location.pathname !== '/results') {
+        navigate('/results', { 
+          replace: true,
+          state: { 
+            fromHistory: true,
+            researchId: result.id,
+            hasData: true,
+            products: result.data
+          }
+        });
+      }
+
+      console.log('🔒 Product view state updated:', { 
         researchId: result.id,
+        productsCount: result.data.length,
         fromHistory: true,
         view: 'results',
-        showHistory: true
+        showHistory: true,
+        pathname: location.pathname
       });
       
     } catch (error) {
-      console.error('Error selecting history item:', error);
+      console.error('Failed to load selected analysis:', error);
       toast.error('Failed to load selected analysis');
     }
   };
@@ -653,6 +717,7 @@ export default function App() {
       
       // Process the response data using the new parser
       const results = parseProductData(response);
+      console.log('Parsed webhook response into products:', results);
       
       // Set the results
       setAnalysisResults(results);
@@ -827,7 +892,7 @@ export default function App() {
                         <rect width="32" height="32" rx="8" fill="#FFE600" />
                         <path d="M18.5 5L7 17.5H14L12.5 27L24 14.5H17L18.5 5Z" fill="#0A0A0A" stroke="#0A0A0A" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
-                      <span className="text-xl font-bold bg-gradient-to-r from-yellow-400 to-primary-400 bg-clip-text text-transparent">BOFU AI</span>
+                      <span className="text-xl font-bold bg-gradient-to-r from-yellow-400 to-primary-400 bg-clip-text text-transparent">BOFU ai</span>
                     </div>
                   </div>
                 </div>
@@ -846,7 +911,7 @@ export default function App() {
           <div className="container max-w-6xl mx-auto px-4 py-16 flex-grow flex items-center justify-center">
             <div className="text-center">
               <h1 className="text-4xl md:text-5xl font-bold mb-6 bg-gradient-to-r from-yellow-400 to-primary-400 bg-clip-text text-transparent">
-                BOFU AI Research Assistant
+                BOFU ai Research Assistant
               </h1>
               <p className="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
                 Upload your research documents, add blog URLs, and specify your product lines to generate comprehensive bottom-of-funnel analysis.
@@ -1318,6 +1383,56 @@ export default function App() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [wasVisible, user]);
+  
+  // Update the URL path change effect to work with React Router
+  useEffect(() => {
+    console.log("URL path changed, syncing state:", location.pathname);
+    
+    // Synchronize the currentView state with the URL
+    if (location.pathname === '/history') {
+      console.log("URL is /history, setting currentView to history");
+      setShowHistory(true);
+      setCurrentView('history');
+      
+      // Force a refresh of the history data
+      loadHistory().catch(error => {
+        console.error('Error refreshing history data on URL change:', error);
+      });
+      
+      // Update localStorage
+      try {
+        const savedState = localStorage.getItem('bofu_app_state');
+        if (savedState) {
+          const parsedState = JSON.parse(savedState);
+          parsedState.showHistory = true;
+          parsedState.currentView = 'history';
+          parsedState.lastView = 'history';
+          localStorage.setItem('bofu_app_state', JSON.stringify(parsedState));
+        }
+      } catch (error) {
+        console.error('Error updating localStorage on URL change:', error);
+      }
+    } else if (location.pathname === '/' && user) {
+      console.log("URL is /, setting currentView to main");
+      // Only change to main if we're logged in
+      setShowHistory(false);
+      setCurrentView('main');
+      
+      // Update localStorage
+      try {
+        const savedState = localStorage.getItem('bofu_app_state');
+        if (savedState) {
+          const parsedState = JSON.parse(savedState);
+          parsedState.showHistory = false;
+          parsedState.currentView = 'main';
+          parsedState.lastView = 'main';
+          localStorage.setItem('bofu_app_state', JSON.stringify(parsedState));
+        }
+      } catch (error) {
+        console.error('Error updating localStorage on URL change:', error);
+      }
+    }
+  }, [location.pathname, loadHistory, user]);
   
   return (
     <div className="bg-secondary-900 text-white">

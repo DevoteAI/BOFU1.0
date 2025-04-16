@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { LogOut, Settings, User as UserIcon } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import toast from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
 
 interface UserMenuProps {
   user: {
@@ -16,6 +17,7 @@ interface UserMenuProps {
 
 export function UserMenu({ user }: UserMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const navigate = useNavigate();
   
   // Helper function to get display name
   const getDisplayName = () => {
@@ -32,8 +34,8 @@ export function UserMenu({ user }: UserMenuProps) {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       toast.success('Signed out successfully');
-      // Use location.assign for a hard redirect that forces a complete navigation
-      window.location.assign('/');
+      // Use React Router for client-side navigation
+      navigate('/', { replace: true });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to sign out');
     }
