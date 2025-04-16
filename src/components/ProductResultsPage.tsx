@@ -414,8 +414,6 @@ function ProductResultsPage({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [editedProducts]);
 
-  const navigate = useNavigate();
-
   return (
     <div className="min-h-screen bg-gradient-dark bg-circuit-board">
       {/* Header Section */}
@@ -426,26 +424,10 @@ function ProductResultsPage({
         showHistory={showHistory}
         setShowHistory={(show) => {
           console.log("Setting history state in ProductResultsPage:", show);
-          
-          // Update React state if needed (but we're going to navigate away anyway)
           if (setShowHistory) {
             setShowHistory(show);
           }
-          
-          // Save current state to session storage before navigation
-          if (editedProducts.length > 0) {
-            sessionStorage.setItem('bofu_edited_products', JSON.stringify(editedProducts));
-            console.log("Saved products before direct navigation");
-          }
-          
-          // Use the most direct navigation possible - this ensures view change
-          if (show) {
-            console.log("DIRECT REPLACEMENT navigation to history page");
-            window.location.replace(window.location.origin + '/history');
-          } else {
-            console.log("DIRECT REPLACEMENT navigation to main page");
-            window.location.replace(window.location.origin + '/');
-          }
+          // Don't handle navigation here - let MainHeader handle it
         }}
         forceHistoryView={forceHistoryView}
         hideHistoryButton={true}
@@ -593,24 +575,24 @@ function ProductResultsPage({
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {editedProducts && editedProducts.length > 0 ? (
               editedProducts.map((product, index) => (
-                <motion.div
-                  key={`${product.companyName}-${index}`}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                >
-                  <ProductCard 
-                    product={product}
-                    index={index}
-                    onSave={handleProductSave}
-                    onApprove={handleProductApprove}
-                    onUpdateSection={handleUpdateSection}
-                    updateProduct={handleUpdateProduct}
-                    isActionLoading={actionLoadingIndex === index}
+              <motion.div
+                key={`${product.companyName}-${index}`}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.1 }}
+              >
+                <ProductCard 
+                  product={product}
+                  index={index}
+                  onSave={handleProductSave}
+                  onApprove={handleProductApprove}
+                  onUpdateSection={handleUpdateSection}
+                  updateProduct={handleUpdateProduct}
+                  isActionLoading={actionLoadingIndex === index}
                     isMultipleProducts={editedProducts.length > 0}
-                    isAdmin={false}
-                  />
-                </motion.div>
+                  isAdmin={false}
+                />
+              </motion.div>
               ))
             ) : (
               <div className="col-span-1 lg:col-span-2 p-8 text-center">
