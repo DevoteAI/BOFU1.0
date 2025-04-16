@@ -125,40 +125,10 @@ export default function App() {
   
   // Function to force update to history view
   const forceHistoryView = () => {
-    console.log("🔄 Forcing history view with DIRECT navigation");
+    console.log("🔄 Forcing history view with DIRECT replacement");
     
-    // First, update states that might be needed on the history page
-    setShowHistory(true);
-    setCurrentView('history');
-    
-    // Update session storage
-    sessionStorage.setItem('bofu_came_from_history', 'true');
-    sessionStorage.setItem('bofu_current_view', 'history');
-    sessionStorage.setItem('bofu_viewing_results', 'false');
-    sessionStorage.setItem('bofu_viewing_history', 'true');
-    
-    // Force a refresh of history data but don't wait for it
-    loadHistory().catch(error => {
-      console.error("Error refreshing history data:", error);
-    });
-    
-    // Try React Router navigation first
-    try {
-      navigate('/history', { replace: true });
-      
-      // If that doesn't cause a view change (check in a timeout)
-      setTimeout(() => {
-        if (window.location.pathname !== '/history') {
-          console.log("React Router navigation failed, using window.location as fallback");
-          // Fallback to direct navigation with SPA-aware approach
-          window.location.href = window.location.origin + '/history';
-        }
-      }, 100);
-    } catch (err) {
-      console.error("Navigation error, using fallback", err);
-      // Fallback to direct navigation
-      window.location.href = window.location.origin + '/history';
-    }
+    // Force the most direct navigation possible
+    window.location.replace(window.location.origin + '/history');
   };
 
   // Function to handle showing the auth modal
@@ -900,15 +870,51 @@ export default function App() {
       isAdmin
     });
 
-    // Special case: If we have analysis results and current view is 'results',
-    // render the results page regardless of the URL
-    if (currentView === 'results' || (
-        analysisResults.length > 0 && 
-        sessionStorage.getItem('bofu_viewing_results') === 'true')) {
+    // IMPORTANT: Use the URL path as the primary source of truth, not just the currentView state
+    // This ensures we're always showing what the URL indicates, regardless of internal state
+    if (location.pathname === '/results') {
       return renderResultsPage();
     }
+    
+    if (location.pathname === '/history') {
+      // Make sure state is synced with URL
+      if (currentView !== 'history') {
+        setCurrentView('history');
+        setShowHistory(true);
+      }
+      
+      return (
+        <div className="flex flex-col min-h-screen">
+          <MainHeader 
+            user={user}
+            showHistory={true}
+            setShowHistory={(value) => {
+              console.log("Setting showHistory from history view:", value);
+              setShowHistory(value);
+              // When leaving history view, update current view
+              if (!value) {
+                setCurrentView('main');
+                navigate('/', { replace: true });
+              }
+            }}
+            onStartNew={handleStartNew}
+            forceHistoryView={forceHistoryView}
+            onShowAuthModal={handleShowAuthModal}
+          />
+          <div className="flex-1 bg-gradient-dark bg-circuit-board">
+            <ResearchHistory
+              results={researchHistory}
+              isLoading={isLoading}
+              onSelect={handleSelectHistoryItem}
+              onDelete={handleDeleteResult}
+              onStartNew={handleStartNew}
+            />
+          </div>
+        </div>
+      );
+    }
 
-    if (isAdmin && currentView === 'admin') {
+    if (isAdmin && (currentView === 'admin' || location.pathname === '/admin')) {
       return <AdminDashboard onLogout={handleAdminLogout} />;
     }
 
@@ -963,51 +969,21 @@ export default function App() {
       );
     }
 
-    if (currentView === 'history') {
-      return (
-        <div className="flex flex-col min-h-screen">
-          <MainHeader 
-            user={user}
-            showHistory={showHistory} 
-            setShowHistory={(value) => {
-              console.log("Setting showHistory from history view:", value);
-              setShowHistory(value);
-              // When leaving history view, update current view
-              if (!value) {
-                setCurrentView('main');
-                
-                // Explicitly update localStorage
-                try {
-                  const savedState = localStorage.getItem('bofu_app_state');
-                  if (savedState) {
-                    const parsedState = JSON.parse(savedState);
-                    parsedState.showHistory = false;
-                    parsedState.currentView = 'main';
-                    localStorage.setItem('bofu_app_state', JSON.stringify(parsedState));
-                    console.log('Explicitly updated localStorage when leaving history view');
-                  }
-                } catch (error) {
-                  console.error('Error updating localStorage when leaving history:', error);
-                }
-              }
-            }}
-            onStartNew={handleStartNew}
-            forceHistoryView={forceHistoryView}
-            onShowAuthModal={handleShowAuthModal}
-          />
-          <div className="flex-1 bg-gradient-dark bg-circuit-board">
-            <ResearchHistory
-              results={researchHistory}
-              isLoading={isLoading}
-              onSelect={handleSelectHistoryItem}
-              onDelete={handleDeleteResult}
-              onStartNew={handleStartNew}
-            />
-          </div>
-        </div>
-      );
+    // Default to main form view for authenticated users (/) or if no other view matches
+    // If we've gotten this far and the path is not '/', redirect
+    if (location.pathname !== '/' && user) {
+      // Schedule a navigation to home
+      setTimeout(() => {
+        navigate('/', { replace: true });
+      }, 0);
     }
-
+    
+    // Make sure state is synced
+    if (currentView !== 'main' && user) {
+      setCurrentView('main');
+      setShowHistory(false);
+    }
+    
     // Main form view
     return (
       <div className="flex flex-col min-h-screen">
@@ -1020,25 +996,11 @@ export default function App() {
             // When entering history view, update current view immediately
             if (value) {
               setCurrentView('history');
+              navigate('/history', { replace: true });
               // Force a refresh of the history data
               loadHistory().catch(error => {
                 console.error('Error refreshing history:', error);
               });
-              
-              // Explicitly update localStorage
-              try {
-                const savedState = localStorage.getItem('bofu_app_state');
-                if (savedState) {
-                  const parsedState = JSON.parse(savedState);
-                  parsedState.showHistory = true;
-                  parsedState.currentView = 'history';
-                  parsedState.lastView = 'history';
-                  localStorage.setItem('bofu_app_state', JSON.stringify(parsedState));
-                  console.log('Explicitly updated localStorage when entering history view');
-                }
-              } catch (error) {
-                console.error('Error updating localStorage when entering history:', error);
-              }
             }
           }}
           onStartNew={handleStartNew}

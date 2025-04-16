@@ -29,32 +29,10 @@ export function PageHeader({
     e.preventDefault(); // Prevent any default behavior
     e.stopPropagation();
     
-    console.log("History button clicked in PageHeader - using DIRECT navigation");
+    console.log("History button clicked in PageHeader - using DIRECT replacement");
     
-    // First, save any necessary state to sessionStorage
-    if (showHistory !== undefined) {
-      sessionStorage.setItem('bofu_viewing_history', 'true');
-      sessionStorage.setItem('bofu_current_view', 'history');
-      sessionStorage.setItem('bofu_viewing_results', 'false');
-    }
-    
-    try {
-      // Try React Router navigation first
-      navigate('/history');
-      
-      // If that doesn't cause a view change (check in a timeout)
-      setTimeout(() => {
-        if (window.location.pathname !== '/history') {
-          console.log("React Router navigation failed, using window.location as fallback");
-          // Fallback to direct navigation with SPA-aware approach
-          window.location.href = window.location.origin + '/history';
-        }
-      }, 100);
-    } catch (err) {
-      console.error("Navigation error, using fallback", err);
-      // Fallback to direct navigation
-      window.location.href = window.location.origin + '/history';
-    }
+    // Force the most direct navigation possible
+    window.location.replace(window.location.origin + '/history');
   };
 
   // Handler for going to the main page
@@ -62,32 +40,10 @@ export function PageHeader({
     e.preventDefault(); // Prevent any default behavior
     e.stopPropagation();
     
-    console.log("Company name clicked in PageHeader - using DIRECT navigation");
+    console.log("Company name clicked in PageHeader - using DIRECT replacement");
     
-    // First, save any necessary state to sessionStorage
-    if (showHistory !== undefined) {
-      sessionStorage.setItem('bofu_viewing_history', 'false');
-      sessionStorage.setItem('bofu_current_view', 'main');
-      sessionStorage.setItem('bofu_viewing_results', 'false');
-    }
-    
-    try {
-      // Try React Router navigation first
-      navigate('/');
-      
-      // If that doesn't cause a view change (check in a timeout)
-      setTimeout(() => {
-        if (window.location.pathname !== '/') {
-          console.log("React Router navigation failed, using window.location as fallback");
-          // Fallback to direct navigation with SPA-aware approach
-          window.location.href = window.location.origin + '/';
-        }
-      }, 100);
-    } catch (err) {
-      console.error("Navigation error, using fallback", err);
-      // Fallback to direct navigation
-      window.location.href = window.location.origin + '/';
-    }
+    // Force the most direct navigation possible
+    window.location.replace(window.location.origin + '/');
   };
 
   return (
