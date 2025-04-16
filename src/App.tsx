@@ -125,38 +125,25 @@ export default function App() {
   
   // Function to force update to history view
   const forceHistoryView = () => {
-    console.log("🔄 Forcing history view - current state:", { 
-      showHistory, 
-      currentView, 
-      activeStep,
-      hasResults: analysisResults.length > 0,
-      historyCount: researchHistory.length
-    });
+    console.log("🔄 Forcing history view with DIRECT navigation");
     
-    // First update the state
+    // First, update states that might be needed on the history page
     setShowHistory(true);
     setCurrentView('history');
     
-    // Add a timeout to ensure data is refreshed before view is changed
-    setTimeout(() => {
-      // Force a refresh of the history data
-      loadHistory().then(() => {
-        console.log("✅ History data refreshed after force view change");
-      });
-      
-      // Log the state after the update
-      console.log("🔄 After forceHistoryView - state is now:", { 
-        showHistory: true, 
-        currentView: 'history',
-        historyCount: researchHistory.length
-      });
-      
-      // Ensure URL is updated to match state using React Router
-      if (location.pathname !== '/history') {
-        console.log("URL doesn't match state, navigating to /history");
-        navigate('/history');
-      }
-    }, 200);
+    // Update session storage
+    sessionStorage.setItem('bofu_came_from_history', 'true');
+    sessionStorage.setItem('bofu_current_view', 'history');
+    sessionStorage.setItem('bofu_viewing_results', 'false');
+    sessionStorage.setItem('bofu_viewing_history', 'true');
+    
+    // Force a refresh of history data but don't wait for it
+    loadHistory().catch(error => {
+      console.error("Error refreshing history data:", error);
+    });
+    
+    // Use direct navigation which bypasses React Router completely
+    window.location.href = '/history';
   };
 
   // Function to handle showing the auth modal
@@ -652,65 +639,51 @@ export default function App() {
   };
   
   const handleSubmit = async () => {
-    if (!isFormValid()) return;
-
+    if (isSubmitting) return;
+    
     setIsSubmitting(true);
-
+    
     try {
-      // First process all blog links to extract their content
-      const processedBlogs = await Promise.all(
-        blogLinks.map(async (url) => {
-          try {
-            const result = await scrapeBlogContent(url);
-            return {
-              url: result.url,
-              content: result.content,
-              title: result.title,
-              type: 'blog'
-            };
-          } catch (error) {
-            console.error(`Failed to process blog: ${url}`, error);
-            return {
-              url,
-              content: `Failed to extract content from ${url}`,
-              title: url,
-              type: 'blog'
-            };
-          }
-        })
-      );
-
-      // Prepare the payload for the webhook - limit content size for large documents
+      // Validation
+      if (documents.length === 0 && blogLinks.length === 0 && productLines.length === 0) {
+        toast.error('Please add at least one document, blog link, or product line');
+        setIsSubmitting(false);
+        return;
+      }
+      
+      const loadingToast = toast.loading('Processing your data...');
+      
+      console.log('Starting analysis with data:', {
+        documents: documents.length,
+        blogLinks: blogLinks.length,
+        productLines: productLines.length
+      });
+      
+      // Prepare payload
       const payload = {
-        documents: [
-          ...documents.map(doc => ({
-            name: doc.name,
-            // Strictly limit document content to 50KB to prevent processing errors
-            content: doc.content.length > 50000 ? doc.content.substring(0, 50000) + "... (content truncated)" : doc.content,
-            type: doc.type
-          })),
-          // Add processed blog content as documents
-          ...processedBlogs.map(blog => ({
-            name: blog.title,
-            content: blog.content.length > 50000 ? blog.content.substring(0, 50000) + "... (content truncated)" : blog.content,
-            type: 'blog'
-          }))
-        ],
-        // Include original blog URLs for reference
-        blogLinks: blogLinks.slice(0, 10),
-        productLines: productLines.slice(0, 10)
+        documents: documents,
+        blogLinks: blogLinks,
+        productLines: productLines
       };
-
-      // Send data to webhook
+      
+      // Send request to webhook
+      console.log('Sending webhook request with payload:', payload);
+      
       const response = await makeWebhookRequest(
         'https://hook.us2.make.com/dmgxx97dencaquxi9vr9khxrr71kotpm',
         payload,
         {
-          timeout: 30000,
+          timeout: 600000, // 10 minutes
           maxRetries: 3,
-          retryDelay: 2000
+          retryDelay: 5000,
+          pollingInterval: 20000,
+          maxPollingAttempts: 30
         }
       );
+      
+      // Clear loading toast
+      toast.dismiss(loadingToast);
+      toast.success('Analysis complete!');
 
       // The response is now the actual result data
       console.log('Processing webhook response:', response);
@@ -719,22 +692,40 @@ export default function App() {
       const results = parseProductData(response);
       console.log('Parsed webhook response into products:', results);
       
-      // Set the results
+      // Ensure we have valid results
+      if (!results || results.length === 0) {
+        console.error('No valid results parsed from webhook response');
+        toast.error('Failed to parse analysis results');
+        setIsSubmitting(false);
+        return;
+      }
+      
+      // Set the results - ensure this happens before changing view
       setAnalysisResults(results);
-      setCurrentResearchId(undefined); // Clear previous ID when starting new analysis
+      console.log('Set analysis results state:', results.length);
+      
+      // Clear previous research ID
+      setCurrentResearchId(undefined);
+      
+      // Force view change to results with explicit state update
+      console.log('Changing view to results');
       setCurrentView('results');
       
-      // Save this state to localStorage
+      // Save this state to localStorage and sessionStorage
       const stateToSave = {
         currentView: 'results',
         showHistory: false,
         isViewingResults: true,
         lastView: 'results',
+        prioritizeResults: true
       };
+      
       localStorage.setItem('bofu_app_state', JSON.stringify(stateToSave));
       sessionStorage.setItem('bofu_current_view', 'results');
-
-      setIsSubmitting(false);
+      sessionStorage.setItem('bofu_viewing_results', 'true');
+      sessionStorage.setItem('bofu_edited_products', JSON.stringify(results));
+      
+      console.log('Saved app state to storage:', stateToSave);
 
     } catch (error) {
       console.error('Error submitting analysis:', error);
@@ -793,6 +784,13 @@ export default function App() {
     if (shouldShowHistory) {
       sessionStorage.setItem('bofu_came_from_history', 'true');
     }
+    
+    // Debug: Log analysis results data
+    console.log('Debug - Rendering results page with data:', { 
+      analysisResultsLength: analysisResults.length,
+      analysisResultsData: analysisResults,
+      currentResearchId
+    });
     
     return (
       <div className="flex flex-col min-h-screen">
@@ -878,8 +876,29 @@ export default function App() {
 
   // Render the main view based on the current state
   const renderView = () => {
-    // For unauthenticated users, show auth view
-    if (currentView === 'auth' || !user) {
+    // Debug - log current state before rendering
+    console.log('Rendering app view:', {
+      currentView,
+      path: location.pathname,
+      hasAnalysisResults: analysisResults.length > 0,
+      showHistory,
+      isAdmin
+    });
+
+    // Special case: If we have analysis results and current view is 'results',
+    // render the results page regardless of the URL
+    if (currentView === 'results' || (
+        analysisResults.length > 0 && 
+        sessionStorage.getItem('bofu_viewing_results') === 'true')) {
+      return renderResultsPage();
+    }
+
+    if (isAdmin && currentView === 'admin') {
+      return <AdminDashboard onLogout={handleAdminLogout} />;
+    }
+
+    // Always show the auth modal if the user isn't authenticated
+    if (!user && showAuthModal) {
       return (
         <div className="flex flex-col min-h-screen">
           <header className="sticky top-0 z-50 backdrop-blur-xl bg-gradient-to-r from-secondary-900/95 to-secondary-800/95 border-b border-primary-500/30 shadow-lg">
@@ -927,14 +946,6 @@ export default function App() {
           </div>
         </div>
       );
-    }
-
-    if (currentView === 'admin' && isAdmin) {
-      return <AdminDashboard onLogout={handleAdminLogout} />;
-    }
-    
-    if (currentView === 'results') {
-      return renderResultsPage();
     }
 
     if (currentView === 'history') {
@@ -1386,10 +1397,20 @@ export default function App() {
   
   // Update the URL path change effect to work with React Router
   useEffect(() => {
-    console.log("URL path changed, syncing state:", location.pathname);
+    console.log("URL path changed, syncing state:", {
+      path: location.pathname, 
+      currentView,
+      state: location.state
+    });
     
-    // Synchronize the currentView state with the URL
-    if (location.pathname === '/history') {
+    // Check for our direct navigation flag
+    const fromProductCard = location.state?.fromProductCard;
+    
+    // If we're coming from product results, make sure state is correctly updated
+    const fromResults = location.state?.fromResults;
+    
+    // Synchronize the currentView state with the URL - but don't override direct navigation
+    if (location.pathname === '/history' && !fromProductCard) {
       console.log("URL is /history, setting currentView to history");
       setShowHistory(true);
       setCurrentView('history');
@@ -1398,6 +1419,10 @@ export default function App() {
       loadHistory().catch(error => {
         console.error('Error refreshing history data on URL change:', error);
       });
+      
+      // Clear other view states that might conflict
+      sessionStorage.setItem('bofu_viewing_results', 'false');
+      sessionStorage.setItem('bofu_viewing_history', 'true');
       
       // Update localStorage
       try {
@@ -1412,11 +1437,15 @@ export default function App() {
       } catch (error) {
         console.error('Error updating localStorage on URL change:', error);
       }
-    } else if (location.pathname === '/' && user) {
+    } else if (location.pathname === '/' && user && !fromProductCard) {
       console.log("URL is /, setting currentView to main");
       // Only change to main if we're logged in
       setShowHistory(false);
       setCurrentView('main');
+      
+      // Clear other view states that might conflict
+      sessionStorage.setItem('bofu_viewing_results', 'false');
+      sessionStorage.setItem('bofu_viewing_history', 'false');
       
       // Update localStorage
       try {
@@ -1432,7 +1461,241 @@ export default function App() {
         console.error('Error updating localStorage on URL change:', error);
       }
     }
-  }, [location.pathname, loadHistory, user]);
+    // Special case for results page
+    else if (location.pathname === '/results' && !fromProductCard) {
+      console.log("URL is /results, ensuring results view is active");
+      setCurrentView('results');
+      sessionStorage.setItem('bofu_viewing_results', 'true');
+      
+      // Restore history context if it was set
+      if (sessionStorage.getItem('bofu_came_from_history') === 'true') {
+        setShowHistory(true);
+      }
+    }
+  }, [location.pathname, location.state, loadHistory, user, currentView]);
+  
+  // Add specific effect for handling view changes to results
+  useEffect(() => {
+    // Only run this effect when currentView becomes 'results'
+    if (currentView === 'results') {
+      console.log('Current view changed to results, checking analysisResults:', analysisResults.length);
+      
+      // If analysisResults is empty, try to recover from sessionStorage
+      if (analysisResults.length === 0) {
+        const savedProducts = sessionStorage.getItem('bofu_edited_products');
+        if (savedProducts) {
+          try {
+            const parsedProducts = JSON.parse(savedProducts);
+            if (Array.isArray(parsedProducts) && parsedProducts.length > 0) {
+              console.log('Recovered analysis results from session storage:', parsedProducts.length);
+              setAnalysisResults(parsedProducts);
+            }
+          } catch (error) {
+            console.error('Failed to parse saved products:', error);
+          }
+        }
+      }
+      
+      // Force the URL to /results to ensure proper routing
+      if (window.location.pathname !== '/results') {
+        console.log('Navigating to /results path');
+        navigate('/results', { replace: true });
+      }
+    }
+  }, [currentView, analysisResults.length, navigate]);
+  
+  // Add a dedicated effect for global navigation events
+  useEffect(() => {
+    const handleGlobalNavigation = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const target = customEvent.detail?.target;
+      const fromProductResults = customEvent.detail?.fromProductResults;
+      
+      console.log("🧭 Global navigation event received:", { target, fromProductResults });
+      
+      // Force direct navigation regardless of current view
+      if (target === 'history') {
+        console.log("🔄 Navigating to history view from current view:", currentView);
+        
+        // Update state synchronously
+        setShowHistory(true);
+        setCurrentView('history');
+        
+        // Clear any results state if we're navigating away from product results
+        if (currentView === 'results') {
+          // Don't actually clear analysis results because we want to preserve them
+          // for potential back navigation, but do clear the view state
+          console.log("Clearing results view state while preserving data");
+        }
+        
+        // Update session storage with clear state
+        sessionStorage.setItem('bofu_came_from_history', 'true');
+        sessionStorage.setItem('bofu_current_view', 'history');
+        sessionStorage.setItem('bofu_viewing_results', 'false');
+        sessionStorage.setItem('bofu_viewing_history', 'true');
+        
+        // Force load history data before navigation to ensure it's available
+        loadHistory().then(() => {
+          console.log("History data loaded, now navigating");
+          
+          // Navigate AFTER data is loaded with replace: true to avoid history stack issues
+          navigate('/history', { 
+            replace: true,
+            state: { 
+              fromResults: true,
+              timestamp: Date.now()  // Add timestamp to force a "new" navigation
+            }
+          });
+          
+          // Apply additional view state updates after navigation
+          setTimeout(() => {
+            setCurrentView('history');
+            setShowHistory(true);
+            console.log("✅ History view reinforced after navigation");
+          }, 50);
+        }).catch(error => {
+          console.error("Error loading history before navigation:", error);
+          // Navigate anyway to prevent UI from being stuck
+          navigate('/history', { replace: true });
+        });
+      } 
+      else if (target === 'main') {
+        console.log("🔄 Navigating to main view from current view:", currentView);
+        
+        // Update state synchronously
+        setShowHistory(false);
+        setCurrentView('main');
+        
+        // Clear any results state if we're navigating away from product results
+        if (currentView === 'results') {
+          // Don't actually clear analysis results because we want to preserve them
+          // for potential back navigation, but do clear the view state
+          console.log("Clearing results view state while preserving data");
+        }
+        
+        // Update session storage
+        sessionStorage.removeItem('bofu_came_from_history');
+        sessionStorage.setItem('bofu_current_view', 'main');
+        sessionStorage.setItem('bofu_viewing_results', 'false');
+        sessionStorage.setItem('bofu_viewing_history', 'false');
+        sessionStorage.removeItem('bofu_force_history_view');
+        
+        // Navigate with replace and state to force a fresh navigation
+        navigate('/', { 
+          replace: true,
+          state: { 
+            fromResults: true,
+            timestamp: Date.now()  // Add timestamp to force a "new" navigation
+          }
+        });
+        
+        // Apply additional view state updates after navigation
+        setTimeout(() => {
+          setCurrentView('main');
+          setShowHistory(false);
+          console.log("✅ Main view reinforced after navigation");
+        }, 50);
+      }
+    };
+
+    // Listen for the global navigation event
+    window.addEventListener('globalNavigation', handleGlobalNavigation);
+
+    return () => {
+      window.removeEventListener('globalNavigation', handleGlobalNavigation);
+    };
+  }, [navigate, loadHistory, currentView]);
+  
+  // Add specialized function for product card navigation
+  const navigateFromProductCardView = (target: 'history' | 'main') => {
+    console.log(`🔍 PRODUCT CARD DIRECT NAVIGATION: ${target} (Previous view: ${currentView})`);
+    
+    // Phase 1: Immediate synchronous state updates
+    if (target === 'history') {
+      setShowHistory(true);
+      
+      // Force load history data synchronously (we don't need to wait for it to complete)
+      loadHistory().catch(error => {
+        console.error("Error loading history during direct navigation:", error);
+      });
+    } else {
+      setShowHistory(false);
+    }
+    
+    // Force view change immediately (don't wait for React batching)
+    const viewTarget = target === 'history' ? 'history' : 'main';
+    setCurrentView(viewTarget as any);
+    
+    // Phase 2: Update storage (synchronous operations)
+    if (target === 'history') {
+      sessionStorage.setItem('bofu_came_from_history', 'true');
+      sessionStorage.setItem('bofu_current_view', 'history');
+      sessionStorage.setItem('bofu_viewing_results', 'false');
+      sessionStorage.setItem('bofu_viewing_history', 'true');
+      sessionStorage.removeItem('bofu_viewing_results');
+    } else {
+      sessionStorage.removeItem('bofu_came_from_history');
+      sessionStorage.setItem('bofu_current_view', 'main');
+      sessionStorage.setItem('bofu_viewing_results', 'false');
+      sessionStorage.setItem('bofu_viewing_history', 'false');
+      sessionStorage.removeItem('bofu_force_history_view');
+    }
+    
+    // Phase 3: Forced React re-render using React's own mechanisms
+    // Force an update cycle to commit all state changes
+    setState({}); // This forces a re-render
+    
+    // Phase 4: Direct navigate with replacement
+    const navPath = target === 'history' ? '/history' : '/';
+    console.log(`🚀 Directly navigating to: ${navPath}`);
+    navigate(navPath, { 
+      replace: true,
+      state: { 
+        forced: true,
+        fromProductCard: true,
+        timestamp: Date.now()
+      }
+    });
+    
+    // Phase 5: Post-navigation reinforcement
+    // Schedule a check to ensure navigation worked, with ability to retry if needed
+    setTimeout(() => {
+      const currentPath = window.location.pathname;
+      const expectedPath = navPath;
+      
+      console.log(`Navigation check: Current=${currentPath}, Expected=${expectedPath}`);
+      
+      if (currentPath !== expectedPath) {
+        console.warn("Navigation failed to complete properly. Retrying with brute force method");
+        window.location.href = navPath; // Last resort - force hard navigation
+      }
+    }, 100);
+  };
+
+  // Add a simple state updater just to force a re-render when needed
+  const [state, setState] = useState({});
+  
+  // Add a dedicated event listener for direct product card navigation
+  useEffect(() => {
+    const handleDirectProductCardNavigation = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const target = customEvent.detail?.target;
+      
+      console.log("🧩 Received direct product card navigation request:", target);
+      
+      if (target === 'history' || target === 'main') {
+        // Use our specialized navigation function for product cards
+        navigateFromProductCardView(target);
+      }
+    };
+    
+    // Add event listener for direct product card navigation
+    window.addEventListener('directProductCardNavigation', handleDirectProductCardNavigation as EventListener);
+    
+    return () => {
+      window.removeEventListener('directProductCardNavigation', handleDirectProductCardNavigation as EventListener);
+    };
+  }, [navigateFromProductCardView]);
   
   return (
     <div className="bg-secondary-900 text-white">

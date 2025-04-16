@@ -104,36 +104,30 @@ export function MainHeader({
                 onClick={(e) => {
                   // Prevent default navigation behavior
                   e.preventDefault();
+                  e.stopPropagation();
                   
-                  console.log("Logo clicked, navigating to main view");
+                  console.log("Logo clicked - using DIRECT navigation");
                   
-                  // Update state to show main view
-                  if (setShowHistory) {
-                    setShowHistory(false);
-                  }
-                  
-                  // Update localStorage state
+                  // First, update local storage state if needed
                   try {
                     const currentState = localStorage.getItem('bofu_app_state');
                     const parsedState = currentState ? JSON.parse(currentState) : {};
-                    const updatedState = {
-                      ...parsedState,
-                      showHistory: false,
-                      currentView: 'main',
-                      lastView: 'main'
-                    };
-                    localStorage.setItem('bofu_app_state', JSON.stringify(updatedState));
-                    console.log("Updated localStorage with main view state:", updatedState);
+                    parsedState.showHistory = false;
+                    parsedState.currentView = 'main';
+                    parsedState.lastView = 'main';
+                    localStorage.setItem('bofu_app_state', JSON.stringify(parsedState));
                   } catch (error) {
                     console.error("Error updating localStorage:", error);
                   }
                   
-                  // Update sessionStorage
+                  // Update session storage for state restoration
                   sessionStorage.removeItem('bofu_came_from_history');
                   sessionStorage.setItem('bofu_current_view', 'main');
+                  sessionStorage.setItem('bofu_viewing_results', 'false');
+                  sessionStorage.setItem('bofu_viewing_history', 'false');
                   
-                  // Use React Router for client-side navigation
-                  navigate('/', { replace: true });
+                  // Force hard navigation that bypasses React Router
+                  window.location.href = '/';
                 }}
               >
                 <motion.div
@@ -154,49 +148,28 @@ export function MainHeader({
                   e.preventDefault();
                   e.stopPropagation();
                   
-                  console.log("History button clicked in MainHeader, current state:", { showHistory });
+                  console.log("History button clicked in MainHeader - using DIRECT navigation");
                   
-                  // First, update all state and storage
-                  if (setShowHistory) {
-                    setShowHistory(true);
-                  }
-                  
-                  // Update localStorage state
+                  // First, update local storage state if needed
                   try {
                     const currentState = localStorage.getItem('bofu_app_state');
                     const parsedState = currentState ? JSON.parse(currentState) : {};
-                    const updatedState = {
-                      ...parsedState,
-                      showHistory: true,
-                      currentView: 'history',
-                      lastView: 'history',
-                      fromProductResults: true
-                    };
-                    localStorage.setItem('bofu_app_state', JSON.stringify(updatedState));
-                    console.log("Updated localStorage with new history state:", updatedState);
+                    parsedState.showHistory = true;
+                    parsedState.currentView = 'history';
+                    parsedState.lastView = 'history';
+                    localStorage.setItem('bofu_app_state', JSON.stringify(parsedState));
                   } catch (error) {
                     console.error("Error updating localStorage:", error);
                   }
-
-                  // Update sessionStorage
+                  
+                  // Update session storage for state restoration
                   sessionStorage.setItem('bofu_came_from_history', 'true');
                   sessionStorage.setItem('bofu_current_view', 'history');
-                  sessionStorage.setItem('bofu_force_history_view', 'true');
-
-                  // Force history view if available
-                  if (forceHistoryView) {
-                    console.log("Forcing history view via prop");
-                    forceHistoryView();
-                  }
-
-                  // Create a custom event to notify App.tsx
-                  window.dispatchEvent(new CustomEvent('forceHistoryView', { 
-                    detail: { fromHeader: true }
-                  }));
-
-                  // Use React Router for client-side navigation instead of full page reload
-                  console.log("Navigating to history view using React Router");
-                  navigate('/history');
+                  sessionStorage.setItem('bofu_viewing_results', 'false');
+                  sessionStorage.setItem('bofu_viewing_history', 'true');
+                  
+                  // Force hard navigation that bypasses React Router
+                  window.location.href = '/history';
                 }}
                 className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2
                   ${showHistory 

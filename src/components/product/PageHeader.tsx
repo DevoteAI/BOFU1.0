@@ -25,69 +25,41 @@ export function PageHeader({
   const navigate = useNavigate();
 
   // Direct handler for the history button
-  const handleHistoryClick = () => {
-    console.log("History button clicked with forceful navigation");
+  const handleHistoryClick = (e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent any default behavior
+    e.stopPropagation();
     
-    // Call both functions to ensure navigation happens
-    if (setShowHistory) setShowHistory(true);
-    if (forceHistoryView) forceHistoryView();
+    console.log("History button clicked in PageHeader - using DIRECT navigation");
     
-    // Also directly update sessionStorage and localStorage
-    sessionStorage.setItem('bofu_came_from_history', 'true');
-    sessionStorage.setItem('bofu_current_view', 'history');
-    
-    try {
-      const savedState = localStorage.getItem('bofu_app_state');
-      if (savedState) {
-        const parsedState = JSON.parse(savedState);
-        parsedState.showHistory = true;
-        parsedState.currentView = 'history';
-        parsedState.lastView = 'history';
-        localStorage.setItem('bofu_app_state', JSON.stringify(parsedState));
-      }
-    } catch (error) {
-      console.error("Error updating localStorage:", error);
+    // First, save any necessary state to sessionStorage
+    if (showHistory !== undefined) {
+      sessionStorage.setItem('bofu_viewing_history', 'true');
+      sessionStorage.setItem('bofu_current_view', 'history');
+      sessionStorage.setItem('bofu_viewing_results', 'false');
     }
     
-    // Dispatch a custom event that App.tsx can listen for
-    window.dispatchEvent(new CustomEvent('forceHistoryView', { 
-      detail: { fromProductResults: true }
-    }));
-    
-    // Use React Router for client-side navigation
-    console.log("Navigating to history view using React Router");
-    navigate('/history');
+    // Directly force navigation using window.location
+    // This completely bypasses React Router and any potential state issues
+    window.location.href = '/history';
   };
 
   // Handler for going to the main page
-  const handleMainPageClick = () => {
-    console.log("Company name clicked, navigating to main view");
+  const handleMainPageClick = (e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent any default behavior
+    e.stopPropagation();
     
-    // Update state to show main view
-    if (setShowHistory) setShowHistory(false);
+    console.log("Company name clicked in PageHeader - using DIRECT navigation");
     
-    // Update localStorage state
-    try {
-      const currentState = localStorage.getItem('bofu_app_state');
-      const parsedState = currentState ? JSON.parse(currentState) : {};
-      const updatedState = {
-        ...parsedState,
-        showHistory: false,
-        currentView: 'main',
-        lastView: 'main'
-      };
-      localStorage.setItem('bofu_app_state', JSON.stringify(updatedState));
-      console.log("Updated localStorage with main view state:", updatedState);
-    } catch (error) {
-      console.error("Error updating localStorage:", error);
+    // First, save any necessary state to sessionStorage
+    if (showHistory !== undefined) {
+      sessionStorage.setItem('bofu_viewing_history', 'false');
+      sessionStorage.setItem('bofu_current_view', 'main');
+      sessionStorage.setItem('bofu_viewing_results', 'false');
     }
     
-    // Update sessionStorage
-    sessionStorage.removeItem('bofu_came_from_history');
-    sessionStorage.setItem('bofu_current_view', 'main');
-    
-    // Use React Router for client-side navigation
-    navigate('/', { replace: true });
+    // Directly force navigation using window.location
+    // This completely bypasses React Router and any potential state issues
+    window.location.href = '/';
   };
 
   return (

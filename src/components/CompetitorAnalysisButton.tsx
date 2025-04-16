@@ -29,11 +29,20 @@ export function CompetitorAnalysisButton({ product, onAnalysisComplete, onCompet
   const [isLoading, setIsLoading] = React.useState(false);
 
   const handleCompetitorAnalysis = async () => {
+    if (!product.productDetails?.name || !product.productDetails?.description) {
+      toast.error('Product name and description are required');
+      return;
+    }
+
     setIsLoading(true);
     const loadingToast = toast.loading('Requesting competitor analysis...');
 
     try {
-      console.log("Sending request to webhook with product:", product);
+      console.log("Preparing request data for competitor analysis:", {
+        companyName: product.companyName,
+        productName: product.productDetails.name,
+        description: product.productDetails.description
+      });
       
       const response = await makeWebhookRequest(
         'https://hook.us2.make.com/n4kuyrqovr1ndwj9nsodio7th70wbm6i',
@@ -42,9 +51,9 @@ export function CompetitorAnalysisButton({ product, onAnalysisComplete, onCompet
             companyName: product.companyName,
             productName: product.productDetails.name,
             description: product.productDetails.description,
-            usps: product.usps,
-            features: product.features,
-            capabilities: product.capabilities.map(cap => ({
+            usps: product.usps || [],
+            features: product.features || [],
+            capabilities: (product.capabilities || []).map(cap => ({
               title: cap.title,
               description: cap.description,
               content: cap.content
@@ -59,8 +68,11 @@ export function CompetitorAnalysisButton({ product, onAnalysisComplete, onCompet
         }
       );
 
+      console.log("Received response from webhook:", response);
+
       // Parse the response using our new parser
       const parsedProducts = parseProductData(response);
+      console.log("Parsed products:", parsedProducts);
       
       // If we got any products back, use the first one's data
       if (parsedProducts.length > 0) {
@@ -68,53 +80,93 @@ export function CompetitorAnalysisButton({ product, onAnalysisComplete, onCompet
         
         // If the product has competitors data, send it to the parent
         if (firstProduct.competitors && onCompetitorsReceived) {
+          console.log("Updating competitors data:", firstProduct.competitors);
           onCompetitorsReceived(firstProduct.competitors);
         }
         
         // If the product has a competitor analysis URL, send it to the parent
         if (firstProduct.competitorAnalysisUrl) {
+          console.log("Updating competitor analysis URL:", firstProduct.competitorAnalysisUrl);
           onAnalysisComplete(firstProduct.competitorAnalysisUrl);
+        } else {
+          // If no URL was found in the parsed product, check the raw response
+          checkAndProcessRawResponse(response);
         }
       } else {
-        // If no products were parsed, check the raw response for a URL
-        if (typeof response === 'string' && response.includes('docs.google.com')) {
-          onAnalysisComplete(response.trim());
-        } else if (typeof response === 'object') {
-          const url = response.analysisUrl || response.documentUrl || response.url;
-          if (url && typeof url === 'string' && url.includes('docs.google.com')) {
-            onAnalysisComplete(url.trim());
-          } else {
-            throw new Error('No valid analysis URL found in response');
-          }
-        } else {
-          throw new Error('Invalid response format');
-        }
+        // If no products were parsed, check the raw response for a URL and competitors
+        checkAndProcessRawResponse(response);
       }
 
-      toast.success('Competitor analysis completed');
+      toast.success('Competitor analysis completed', { id: loadingToast });
     } catch (error) {
       console.error('Error in competitor analysis:', error);
-      toast.error(`Failed to analyze competitors: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Failed to analyze competitors: ${error instanceof Error ? error.message : 'Unknown error'}`, { id: loadingToast });
     } finally {
       setIsLoading(false);
-      toast.dismiss(loadingToast);
+    }
+  };
+
+  // Helper function to extract URL and competitors from response
+  const checkAndProcessRawResponse = (response: any) => {
+    // First check for a URL
+    let url = null;
+    
+    if (typeof response === 'string' && response.includes('docs.google.com')) {
+      console.log("Found direct Google Docs URL in response");
+      url = response.trim();
+    } else if (typeof response === 'object') {
+      url = response.analysisUrl || response.documentUrl || response.url || null;
+      
+      // Check for competitors data in the response
+      if (response.competitors && onCompetitorsReceived) {
+        console.log("Found competitors data in raw response:", response.competitors);
+        onCompetitorsReceived(response.competitors);
+      } else if (response.result && typeof response.result === 'object') {
+        // Check for competitors in result object
+        if (response.result.competitors && onCompetitorsReceived) {
+          console.log("Found competitors data in result object:", response.result.competitors);
+          onCompetitorsReceived(response.result.competitors);
+        }
+      } else if (response.result && typeof response.result === 'string') {
+        // Try to parse the result string
+        try {
+          const resultObj = JSON.parse(response.result);
+          if (resultObj.competitors && onCompetitorsReceived) {
+            console.log("Found competitors data in parsed result string:", resultObj.competitors);
+            onCompetitorsReceived(resultObj.competitors);
+          }
+        } catch (e) {
+          console.warn("Could not parse result string as JSON");
+        }
+      }
+    }
+    
+    // If a URL was found, pass it to the parent
+    if (url && typeof url === 'string' && url.includes('docs.google.com')) {
+      console.log("Found URL in response object:", url);
+      onAnalysisComplete(url.trim());
+    } else {
+      throw new Error('No valid analysis URL found in response');
     }
   };
 
   return (
-    <motion.button
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
+    <button
       onClick={handleCompetitorAnalysis}
       disabled={isLoading}
-      className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+      className="px-4 py-2 bg-primary-500 text-secondary-900 font-medium rounded-lg hover:bg-primary-400 transition-colors shadow-glow hover:shadow-glow-strong flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary-500 disabled:hover:shadow-none"
     >
       {isLoading ? (
-        <Loader2 className="w-4 h-4 animate-spin" />
+        <>
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Analyzing...
+        </>
       ) : (
-        <Target className="w-4 h-4" />
+        <>
+          <Target className="w-4 h-4" />
+          Generate Analysis
+        </>
       )}
-      Analyze Competitors
-    </motion.button>
+    </button>
   );
 }

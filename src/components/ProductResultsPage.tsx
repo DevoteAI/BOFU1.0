@@ -43,6 +43,15 @@ function ProductResultsPage({
   const [hasSavedToHistory, setHasSavedToHistory] = useState(!!existingId);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   
+  // Debug: Log the products received
+  console.log('Debug - ProductResultsPage received props:', {
+    productsCount: products.length,
+    productsData: products,
+    editedProductsCount: editedProducts.length,
+    editedProductsData: editedProducts,
+    existingId
+  });
+  
   // Replace the state with a ref to better track across renders
   const initialSaveRef = useRef({
     inProgress: false,
@@ -97,7 +106,12 @@ function ProductResultsPage({
 
   // Update the products state when props change
   React.useEffect(() => {
-    if (products.length > 0) {
+    console.log("Products prop changed:", { 
+      productCount: products?.length || 0, 
+      hasProducts: Array.isArray(products) && products.length > 0
+    });
+    
+    if (Array.isArray(products) && products.length > 0) {
       setEditedProducts(products);
       sessionStorage.setItem('bofu_edited_products', JSON.stringify(products));
       
@@ -107,6 +121,34 @@ function ProductResultsPage({
       } else {
         setHasSavedToHistory(false);
         setHasUnsavedChanges(true);
+      }
+      
+      // Important: force a re-render to ensure products are displayed
+      console.log("Setting products to state:", products.length);
+      
+      // Log first product for debugging
+      if (products[0]) {
+        console.log("First product sample:", {
+          companyName: products[0].companyName,
+          productName: products[0].productDetails?.name,
+          hasCompetitors: !!products[0].competitors
+        });
+      }
+    } else {
+      console.warn("Received empty or invalid products array", products);
+      
+      // Try to restore products from session storage
+      const savedProducts = sessionStorage.getItem('bofu_edited_products');
+      if (savedProducts) {
+        try {
+          const parsedProducts = JSON.parse(savedProducts);
+          if (Array.isArray(parsedProducts) && parsedProducts.length > 0) {
+            console.log("Restored products from session storage:", parsedProducts.length);
+            setEditedProducts(parsedProducts);
+          }
+        } catch (error) {
+          console.error("Error parsing saved products:", error);
+        }
       }
     }
   }, [products, existingId]);
@@ -382,10 +424,32 @@ function ProductResultsPage({
         showHistory={showHistory}
         setShowHistory={(show) => {
           console.log("Setting history state in ProductResultsPage:", show);
+          
+          // Update React state if needed (but we're going to navigate away anyway)
           if (setShowHistory) {
             setShowHistory(show);
           }
-          // Don't handle navigation here - let MainHeader handle it
+          
+          // Save current state to session storage before navigation
+          if (editedProducts.length > 0) {
+            sessionStorage.setItem('bofu_edited_products', JSON.stringify(editedProducts));
+            console.log("Saved products before direct navigation");
+          }
+          
+          // Direct navigation using window.location
+          if (show) {
+            console.log("DIRECT navigation to history page");
+            sessionStorage.setItem('bofu_viewing_history', 'true');
+            sessionStorage.setItem('bofu_current_view', 'history');
+            sessionStorage.setItem('bofu_viewing_results', 'false');
+            window.location.href = '/history';
+          } else {
+            console.log("DIRECT navigation to main page");
+            sessionStorage.setItem('bofu_viewing_history', 'false');
+            sessionStorage.setItem('bofu_current_view', 'main');
+            sessionStorage.setItem('bofu_viewing_results', 'false');
+            window.location.href = '/';
+          }
         }}
         forceHistoryView={forceHistoryView}
         hideHistoryButton={true}
@@ -531,26 +595,44 @@ function ProductResultsPage({
           
           {/* Products grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {editedProducts.map((product, index) => (
-              <motion.div
-                key={`${product.companyName}-${index}`}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <ProductCard 
-                  product={product}
-                  index={index}
-                  onSave={handleProductSave}
-                  onApprove={handleProductApprove}
-                  onUpdateSection={handleUpdateSection}
-                  updateProduct={handleUpdateProduct}
-                  isActionLoading={actionLoadingIndex === index}
-                  isMultipleProducts={editedProducts.length > 1}
-                  isAdmin={false}
-                />
-              </motion.div>
-            ))}
+            {editedProducts && editedProducts.length > 0 ? (
+              editedProducts.map((product, index) => (
+                <motion.div
+                  key={`${product.companyName}-${index}`}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  <ProductCard 
+                    product={product}
+                    index={index}
+                    onSave={handleProductSave}
+                    onApprove={handleProductApprove}
+                    onUpdateSection={handleUpdateSection}
+                    updateProduct={handleUpdateProduct}
+                    isActionLoading={actionLoadingIndex === index}
+                    isMultipleProducts={editedProducts.length > 0}
+                    isAdmin={false}
+                  />
+                </motion.div>
+              ))
+            ) : (
+              <div className="col-span-1 lg:col-span-2 p-8 text-center">
+                <div className="mb-4">
+                  <svg className="w-12 h-12 mx-auto text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m0 16v1m-8-8h1m16 0h1M5.6 5.6l.8.8m12 12l-.8-.8m-12 0l.8-.8m12-12l-.8.8" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-medium text-primary-400 mb-2">No Analysis Results Found</h3>
+                <p className="text-gray-400 mb-4">We couldn't find any product analysis results to display.</p>
+                <button 
+                  onClick={onStartNew} 
+                  className="px-4 py-2 bg-primary-500 text-secondary-900 rounded-lg font-medium hover:bg-primary-400 transition-colors"
+                >
+                  Start New Analysis
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { toast } from 'react-hot-toast';
+import { CompetitorItem, CompetitorsData, ProductAnalysis, defaultProduct } from '../types/product/types';
 
 const MAX_RETRIES = 3;
 const INITIAL_TIMEOUT = 30000; // 30 seconds for initial request
@@ -330,4 +331,7 @@ export async function makeWebhookRequest(
   }
 
   throw new Error('Max retries exceeded');
-} 
+}
+
+export type { CompetitorItem, CompetitorsData, ProductAnalysis };
+export { defaultProduct }; 

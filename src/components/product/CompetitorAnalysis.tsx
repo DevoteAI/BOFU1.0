@@ -247,21 +247,13 @@ export function CompetitorAnalysis({ product, onUpdate, onUpdateCompetitors }: C
         // If the product has competitors data, update it
         if (firstProduct.competitors && onUpdateCompetitors) {
           onUpdateCompetitors(firstProduct.competitors);
+        } else {
+          // Check raw response for competitors data if not found in parsed product
+          checkAndProcessRawResponse(response);
         }
       } else {
-        // If no products were parsed, check the raw response for a URL
-        if (typeof response === 'string' && response.includes('docs.google.com')) {
-          processUrl(response.trim());
-        } else if (typeof response === 'object') {
-          const url = response.analysisUrl || response.documentUrl || response.url;
-          if (url && typeof url === 'string' && url.includes('docs.google.com')) {
-            processUrl(url.trim());
-          } else {
-            throw new Error('No valid analysis URL found in response');
-          }
-        } else {
-          throw new Error('Invalid response format');
-        }
+        // If no products were parsed, check the raw response
+        checkAndProcessRawResponse(response);
       }
 
       toast.success('Competitor analysis completed', { id: loadingToast });
@@ -270,6 +262,49 @@ export function CompetitorAnalysis({ product, onUpdate, onUpdateCompetitors }: C
       toast.error(`Failed to analyze competitors: ${error instanceof Error ? error.message : 'Unknown error'}`, { id: loadingToast });
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+  
+  // Helper function to extract URL and competitors from response
+  const checkAndProcessRawResponse = (response: any) => {
+    // First check for a URL
+    if (typeof response === 'string' && response.includes('docs.google.com')) {
+      processUrl(response.trim());
+    } else if (typeof response === 'object') {
+      const url = response.analysisUrl || response.documentUrl || response.url;
+      if (url && typeof url === 'string' && url.includes('docs.google.com')) {
+        processUrl(url.trim());
+      }
+      
+      // Check for competitors data in the response
+      if (response.competitors && onUpdateCompetitors) {
+        console.log("Found competitors data in raw response:", response.competitors);
+        onUpdateCompetitors(response.competitors);
+      } else if (response.result && typeof response.result === 'object') {
+        // Check for competitors in result object
+        if (response.result.competitors && onUpdateCompetitors) {
+          console.log("Found competitors data in result object:", response.result.competitors);
+          onUpdateCompetitors(response.result.competitors);
+        }
+      } else if (response.result && typeof response.result === 'string') {
+        // Try to parse the result string as JSON
+        try {
+          const resultObj = JSON.parse(response.result);
+          if (resultObj.competitors && onUpdateCompetitors) {
+            console.log("Found competitors data in parsed result string:", resultObj.competitors);
+            onUpdateCompetitors(resultObj.competitors);
+          }
+        } catch (e) {
+          console.warn("Could not parse result string as JSON");
+        }
+      }
+      
+      // If no URL was found, throw an error
+      if (!url || typeof url !== 'string' || !url.includes('docs.google.com')) {
+        throw new Error('No valid analysis URL found in response');
+      }
+    } else {
+      throw new Error('Invalid response format');
     }
   };
 
