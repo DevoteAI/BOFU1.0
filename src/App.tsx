@@ -142,8 +142,23 @@ export default function App() {
       console.error("Error refreshing history data:", error);
     });
     
-    // Use direct navigation which bypasses React Router completely
-    window.location.href = window.location.origin + '/history';
+    // Try React Router navigation first
+    try {
+      navigate('/history', { replace: true });
+      
+      // If that doesn't cause a view change (check in a timeout)
+      setTimeout(() => {
+        if (window.location.pathname !== '/history') {
+          console.log("React Router navigation failed, using window.location as fallback");
+          // Fallback to direct navigation with SPA-aware approach
+          window.location.href = window.location.origin + '/history';
+        }
+      }, 100);
+    } catch (err) {
+      console.error("Navigation error, using fallback", err);
+      // Fallback to direct navigation
+      window.location.href = window.location.origin + '/history';
+    }
   };
 
   // Function to handle showing the auth modal

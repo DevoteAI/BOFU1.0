@@ -38,9 +38,23 @@ export function PageHeader({
       sessionStorage.setItem('bofu_viewing_results', 'false');
     }
     
-    // Directly force navigation using window.location
-    // Use absolute path for Netlify deployment compatibility
-    window.location.href = window.location.origin + '/history';
+    try {
+      // Try React Router navigation first
+      navigate('/history');
+      
+      // If that doesn't cause a view change (check in a timeout)
+      setTimeout(() => {
+        if (window.location.pathname !== '/history') {
+          console.log("React Router navigation failed, using window.location as fallback");
+          // Fallback to direct navigation with SPA-aware approach
+          window.location.href = window.location.origin + '/history';
+        }
+      }, 100);
+    } catch (err) {
+      console.error("Navigation error, using fallback", err);
+      // Fallback to direct navigation
+      window.location.href = window.location.origin + '/history';
+    }
   };
 
   // Handler for going to the main page
@@ -57,9 +71,23 @@ export function PageHeader({
       sessionStorage.setItem('bofu_viewing_results', 'false');
     }
     
-    // Directly force navigation using window.location
-    // Use absolute path for Netlify deployment compatibility
-    window.location.href = window.location.origin + '/';
+    try {
+      // Try React Router navigation first
+      navigate('/');
+      
+      // If that doesn't cause a view change (check in a timeout)
+      setTimeout(() => {
+        if (window.location.pathname !== '/') {
+          console.log("React Router navigation failed, using window.location as fallback");
+          // Fallback to direct navigation with SPA-aware approach
+          window.location.href = window.location.origin + '/';
+        }
+      }, 100);
+    } catch (err) {
+      console.error("Navigation error, using fallback", err);
+      // Fallback to direct navigation
+      window.location.href = window.location.origin + '/';
+    }
   };
 
   return (

@@ -127,7 +127,23 @@ export function MainHeader({
                   sessionStorage.setItem('bofu_viewing_history', 'false');
                   
                   // Force hard navigation that bypasses React Router
-                  window.location.href = window.location.origin + '/';
+                  try {
+                    // Try React Router navigation first
+                    navigate('/', { replace: true });
+                    
+                    // If that doesn't cause a view change (check in a timeout)
+                    setTimeout(() => {
+                      if (window.location.pathname !== '/') {
+                        console.log("React Router navigation failed, using window.location as fallback");
+                        // Fallback to direct navigation with SPA-aware approach
+                        window.location.href = window.location.origin + '/';
+                      }
+                    }, 100);
+                  } catch (err) {
+                    console.error("Navigation error, using fallback", err);
+                    // Fallback to direct navigation
+                    window.location.href = window.location.origin + '/';
+                  }
                 }}
               >
                 <motion.div
@@ -169,7 +185,23 @@ export function MainHeader({
                   sessionStorage.setItem('bofu_viewing_history', 'true');
                   
                   // Force hard navigation that bypasses React Router
-                  window.location.href = window.location.origin + '/history';
+                  try {
+                    // Try React Router navigation first
+                    navigate('/history', { replace: true });
+                    
+                    // If that doesn't cause a view change (check in a timeout)
+                    setTimeout(() => {
+                      if (window.location.pathname !== '/history') {
+                        console.log("React Router navigation failed, using window.location as fallback");
+                        // Fallback to direct navigation with SPA-aware approach
+                        window.location.href = window.location.origin + '/history';
+                      }
+                    }, 100);
+                  } catch (err) {
+                    console.error("Navigation error, using fallback", err);
+                    // Fallback to direct navigation
+                    window.location.href = window.location.origin + '/history';
+                  }
                 }}
                 className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2
                   ${showHistory 
