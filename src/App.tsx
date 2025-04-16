@@ -898,14 +898,151 @@ export default function App() {
       isAdmin
     });
 
-    // Special case: If we have analysis results and current view is 'results',
-    // render the results page regardless of the URL
-    if (currentView === 'results' || (
-        analysisResults.length > 0 && 
-        sessionStorage.getItem('bofu_viewing_results') === 'true')) {
+    // Path-based routing - primary check
+    const currentPath = location.pathname;
+
+    // Add precedence check for URL path - this fixes the navigation issue
+    // If URL is /history, prioritize showing history view regardless of other state
+    if (currentPath === '/history') {
+      console.log('URL path is /history, showing history view regardless of current state');
+      // Force currentView to match URL - without side effects
+      if (currentView !== 'history') {
+        setTimeout(() => setCurrentView('history'), 0);
+      }
+      return (
+        <div className="flex flex-col min-h-screen">
+          <MainHeader 
+            user={user}
+            showHistory={true}
+            setShowHistory={(value) => {
+              console.log("Setting showHistory from history view:", value);
+              setShowHistory(value);
+              // When leaving history view, update current view
+              if (!value) {
+                setCurrentView('main');
+                
+                // Explicitly update localStorage
+                try {
+                  const savedState = localStorage.getItem('bofu_app_state');
+                  if (savedState) {
+                    const parsedState = JSON.parse(savedState);
+                    parsedState.showHistory = false;
+                    parsedState.currentView = 'main';
+                    localStorage.setItem('bofu_app_state', JSON.stringify(parsedState));
+                    console.log('Explicitly updated localStorage when leaving history view');
+                  }
+                } catch (error) {
+                  console.error('Error updating localStorage when leaving history:', error);
+                }
+              }
+            }}
+            onStartNew={handleStartNew}
+            forceHistoryView={forceHistoryView}
+            onShowAuthModal={handleShowAuthModal}
+          />
+          <div className="flex-1 bg-gradient-dark bg-circuit-board">
+            <ResearchHistory
+              results={researchHistory}
+              isLoading={isLoading}
+              onSelect={handleSelectHistoryItem}
+              onDelete={handleDeleteResult}
+              onStartNew={handleStartNew}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    // If URL is /results, prioritize showing results view regardless of state
+    if (currentPath === '/results') {
+      console.log('URL path is /results, showing results view regardless of current state');
+      // Force currentView to match URL - without side effects
+      if (currentView !== 'results') {
+        setTimeout(() => setCurrentView('results'), 0);
+        // Ensure we have the viewing_results flag set
+        sessionStorage.setItem('bofu_viewing_results', 'true');
+      }
       return renderResultsPage();
     }
 
+    // If URL is /, prioritize showing main view if user is logged in
+    if (currentPath === '/' && user) {
+      console.log('URL path is / and user is logged in, showing main view regardless of current state');
+      // Force currentView to match URL - without side effects
+      if (currentView !== 'main') {
+        setTimeout(() => setCurrentView('main'), 0);
+      }
+      
+      return (
+        <div className="flex flex-col min-h-screen">
+          <MainHeader 
+            user={user}
+            showHistory={showHistory} 
+            setShowHistory={(value) => {
+              console.log("Setting showHistory from main view:", value);
+              setShowHistory(value);
+              // When entering history view, update current view immediately
+              if (value) {
+                setCurrentView('history');
+                // Force a refresh of the history data
+                loadHistory().catch(error => {
+                  console.error('Error refreshing history:', error);
+                });
+                
+                // Explicitly update localStorage
+                try {
+                  const savedState = localStorage.getItem('bofu_app_state');
+                  if (savedState) {
+                    const parsedState = JSON.parse(savedState);
+                    parsedState.showHistory = true;
+                    parsedState.currentView = 'history';
+                    parsedState.lastView = 'history';
+                    localStorage.setItem('bofu_app_state', JSON.stringify(parsedState));
+                    console.log('Explicitly updated localStorage when entering history view');
+                  }
+                } catch (error) {
+                  console.error('Error updating localStorage when entering history:', error);
+                }
+              }
+            }}
+            onStartNew={handleStartNew}
+            forceHistoryView={forceHistoryView}
+            onShowAuthModal={handleShowAuthModal}
+          />
+          <div className="flex-1 bg-gradient-dark bg-circuit-board">
+            <div className="container max-w-6xl mx-auto px-4 py-6 flex-grow">
+              <Header />
+              
+              <div className="space-y-6 mt-6">
+                {/* Step 1: Document Upload */}
+                <DocumentUploader 
+                  onDocumentsProcessed={handleDocumentsProcessed} 
+                />
+                
+                {/* Step 2: Blog Link Input */}
+                <BlogLinkInput 
+                  onBlogLinksChange={handleBlogLinksChange}
+                />
+                
+                {/* Step 3: Product Line Input */}
+                <ProductLineInput 
+                  onProductLinesChange={handleProductLinesChange}
+                />
+                
+                {/* Submit Section */}
+                <SubmitSection 
+                  isDisabled={!isFormValid()} 
+                  onSubmit={handleSubmit}
+                  isSubmitting={isSubmitting} 
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Now handle all other cases as before
     if (isAdmin && currentView === 'admin') {
       return <AdminDashboard onLogout={handleAdminLogout} />;
     }
@@ -961,6 +1098,16 @@ export default function App() {
       );
     }
 
+    // Fall back to state-based views if URL doesn't explicitly determine the view
+    
+    // Results view - if we have analysis results and current view is 'results'
+    if (currentView === 'results' || (
+        analysisResults.length > 0 && 
+        sessionStorage.getItem('bofu_viewing_results') === 'true')) {
+      return renderResultsPage();
+    }
+
+    // History view - if current view is set to history
     if (currentView === 'history') {
       return (
         <div className="flex flex-col min-h-screen">
@@ -1006,7 +1153,7 @@ export default function App() {
       );
     }
 
-    // Main form view
+    // Main form view (default)
     return (
       <div className="flex flex-col min-h-screen">
         <MainHeader 
@@ -1043,31 +1190,33 @@ export default function App() {
           forceHistoryView={forceHistoryView}
           onShowAuthModal={handleShowAuthModal}
         />
-        <div className="container max-w-6xl mx-auto px-4 py-6 flex-grow">
-          <Header />
-          
-          <div className="space-y-6 mt-6">
-            {/* Step 1: Document Upload */}
-            <DocumentUploader 
-              onDocumentsProcessed={handleDocumentsProcessed} 
-            />
+        <div className="flex-1 bg-gradient-dark bg-circuit-board">
+          <div className="container max-w-6xl mx-auto px-4 py-6 flex-grow">
+            <Header />
             
-            {/* Step 2: Blog Link Input */}
-            <BlogLinkInput 
-              onBlogLinksChange={handleBlogLinksChange}
-            />
-            
-            {/* Step 3: Product Line Input */}
-            <ProductLineInput 
-              onProductLinesChange={handleProductLinesChange}
-            />
-            
-            {/* Submit Section */}
-            <SubmitSection 
-              isDisabled={!isFormValid()} 
-              onSubmit={handleSubmit}
-              isSubmitting={isSubmitting} 
-            />
+            <div className="space-y-6 mt-6">
+              {/* Step 1: Document Upload */}
+              <DocumentUploader 
+                onDocumentsProcessed={handleDocumentsProcessed} 
+              />
+              
+              {/* Step 2: Blog Link Input */}
+              <BlogLinkInput 
+                onBlogLinksChange={handleBlogLinksChange}
+              />
+              
+              {/* Step 3: Product Line Input */}
+              <ProductLineInput 
+                onProductLinesChange={handleProductLinesChange}
+              />
+              
+              {/* Submit Section */}
+              <SubmitSection 
+                isDisabled={!isFormValid()} 
+                onSubmit={handleSubmit}
+                isSubmitting={isSubmitting} 
+              />
+            </div>
           </div>
         </div>
       </div>
