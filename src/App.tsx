@@ -125,7 +125,7 @@ export default function App() {
   
   // Function to force update to history view
   const forceHistoryView = () => {
-    console.log("🔄 Forcing history view with hybrid approach");
+    console.log("🔄 Forcing history view with MULTI-LAYERED approach");
     
     // First, update states that might be needed on the history page
     setShowHistory(true);
@@ -136,19 +136,45 @@ export default function App() {
     sessionStorage.setItem('bofu_current_view', 'history');
     sessionStorage.setItem('bofu_viewing_results', 'false');
     sessionStorage.setItem('bofu_viewing_history', 'true');
+    sessionStorage.setItem('bofu_force_history_view', 'true');
     
     // Force a refresh of history data but don't wait for it
     loadHistory().catch(error => {
       console.error("Error refreshing history data:", error);
     });
     
-    // Use history state API for navigation
-    const historyURL = window.location.origin + '/history';
-    window.history.pushState({}, '', historyURL);
-    
-    // Dispatch a popstate event to notify the app the URL has changed
-    // This triggers React Router to update
-    window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+    // Multi-layered approach with fallbacks
+    try {
+      // Layer 1: Try to use history API with a popstate event
+      try {
+        const historyURL = window.location.origin + '/history';
+        window.history.pushState({}, '', historyURL);
+        window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+      } catch (error) {
+        console.error("History API failed:", error);
+      }
+      
+      // Layer 2: Force router navigation in a timeout
+      setTimeout(() => {
+        try {
+          navigate('/history', { replace: true });
+        } catch (error) {
+          console.error("Navigation failed:", error);
+        }
+      }, 50);
+      
+      // Layer 3 (last resort): If after 300ms we're still not on history, force a reload
+      setTimeout(() => {
+        const currentPath = window.location.pathname;
+        if (currentPath !== '/history') {
+          console.log("EMERGENCY REDIRECT: Still not on history page, forcing hard reload");
+          window.location.href = window.location.origin + '/history';
+        }
+      }, 300);
+    } catch (error) {
+      console.error("All navigation methods failed. Last resort redirect:", error);
+      window.location.href = window.location.origin + '/history';
+    }
   };
 
   // Function to handle showing the auth modal
