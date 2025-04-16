@@ -29,7 +29,7 @@ export function PageHeader({
     e.preventDefault(); // Prevent any default behavior
     e.stopPropagation();
     
-    console.log("History button clicked in PageHeader - using DIRECT navigation");
+    console.log("History button clicked in PageHeader - using hybrid approach");
     
     // First, save any necessary state to sessionStorage
     if (showHistory !== undefined) {
@@ -38,9 +38,26 @@ export function PageHeader({
       sessionStorage.setItem('bofu_viewing_results', 'false');
     }
     
-    // Directly force navigation using window.location
-    // This completely bypasses React Router and any potential state issues
-    window.location.href = '/history';
+    // Update local React state if needed
+    if (setShowHistory) {
+      setShowHistory(true);
+    }
+    
+    // IMPORTANT: Instead of using React Router directly, use history state API
+    // This acts similarly to a link click but will work even in production
+    const historyURL = window.location.origin + '/history';
+    window.history.pushState({}, '', historyURL);
+    
+    // Dispatch a popstate event to notify the app the URL has changed
+    // This triggers React Router to update
+    window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+    
+    // Call forceHistoryView after navigation if available
+    if (forceHistoryView) {
+      setTimeout(() => {
+        forceHistoryView();
+      }, 50);
+    }
   };
 
   // Handler for going to the main page
@@ -48,7 +65,7 @@ export function PageHeader({
     e.preventDefault(); // Prevent any default behavior
     e.stopPropagation();
     
-    console.log("Company name clicked in PageHeader - using DIRECT navigation");
+    console.log("Company name clicked in PageHeader - using hybrid approach");
     
     // First, save any necessary state to sessionStorage
     if (showHistory !== undefined) {
@@ -57,9 +74,19 @@ export function PageHeader({
       sessionStorage.setItem('bofu_viewing_results', 'false');
     }
     
-    // Directly force navigation using window.location
-    // This completely bypasses React Router and any potential state issues
-    window.location.href = '/';
+    // Update local React state if needed
+    if (setShowHistory) {
+      setShowHistory(false);
+    }
+    
+    // IMPORTANT: Instead of using React Router directly, use history state API
+    // This acts similarly to a link click but will work even in production
+    const mainURL = window.location.origin + '/';
+    window.history.pushState({}, '', mainURL);
+    
+    // Dispatch a popstate event to notify the app the URL has changed
+    // This triggers React Router to update
+    window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
   };
 
   return (

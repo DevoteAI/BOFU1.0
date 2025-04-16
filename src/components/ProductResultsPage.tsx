@@ -425,30 +425,36 @@ function ProductResultsPage({
         setShowHistory={(show) => {
           console.log("Setting history state in ProductResultsPage:", show);
           
-          // Update React state if needed (but we're going to navigate away anyway)
+          // Update React state if needed
           if (setShowHistory) {
             setShowHistory(show);
           }
           
-          // Save current state to session storage before navigation
-          if (editedProducts.length > 0) {
-            sessionStorage.setItem('bofu_edited_products', JSON.stringify(editedProducts));
-            console.log("Saved products before direct navigation");
-          }
-          
-          // Direct navigation using window.location
+          // Use the hybrid navigation approach
           if (show) {
-            console.log("DIRECT navigation to history page");
+            console.log("Navigating to history using hybrid approach");
             sessionStorage.setItem('bofu_viewing_history', 'true');
             sessionStorage.setItem('bofu_current_view', 'history');
             sessionStorage.setItem('bofu_viewing_results', 'false');
-            window.location.href = '/history';
+            
+            // Use history state API
+            const historyURL = window.location.origin + '/history';
+            window.history.pushState({}, '', historyURL);
+            
+            // Dispatch a popstate event to notify the app the URL has changed
+            window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
           } else {
-            console.log("DIRECT navigation to main page");
+            console.log("Navigating to main using hybrid approach");
             sessionStorage.setItem('bofu_viewing_history', 'false');
             sessionStorage.setItem('bofu_current_view', 'main');
             sessionStorage.setItem('bofu_viewing_results', 'false');
-            window.location.href = '/';
+            
+            // Use history state API
+            const mainURL = window.location.origin + '/';
+            window.history.pushState({}, '', mainURL);
+            
+            // Dispatch a popstate event to notify the app the URL has changed
+            window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
           }
         }}
         forceHistoryView={forceHistoryView}

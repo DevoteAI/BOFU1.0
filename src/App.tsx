@@ -125,7 +125,7 @@ export default function App() {
   
   // Function to force update to history view
   const forceHistoryView = () => {
-    console.log("🔄 Forcing history view with DIRECT navigation");
+    console.log("🔄 Forcing history view with hybrid approach");
     
     // First, update states that might be needed on the history page
     setShowHistory(true);
@@ -142,8 +142,13 @@ export default function App() {
       console.error("Error refreshing history data:", error);
     });
     
-    // Use direct navigation which bypasses React Router completely
-    window.location.href = '/history';
+    // Use history state API for navigation
+    const historyURL = window.location.origin + '/history';
+    window.history.pushState({}, '', historyURL);
+    
+    // Dispatch a popstate event to notify the app the URL has changed
+    // This triggers React Router to update
+    window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
   };
 
   // Function to handle showing the auth modal
