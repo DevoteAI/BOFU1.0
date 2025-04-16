@@ -29,10 +29,10 @@ export function PageHeader({
     e.preventDefault(); // Prevent any default behavior
     e.stopPropagation();
     
-    console.log("History button clicked in PageHeader - using DIRECT replacement");
+    console.log("History button clicked in PageHeader");
     
-    // Force the most direct navigation possible
-    window.location.replace(window.location.origin + '/history');
+    // Use React Router instead of direct location replacement
+    navigate('/history');
   };
 
   // Handler for going to the main page
@@ -40,10 +40,10 @@ export function PageHeader({
     e.preventDefault(); // Prevent any default behavior
     e.stopPropagation();
     
-    console.log("Company name clicked in PageHeader - using DIRECT replacement");
+    console.log("Company name clicked in PageHeader");
     
-    // Force the most direct navigation possible
-    window.location.replace(window.location.origin + '/');
+    // Use React Router instead of direct location replacement
+    navigate('/');
   };
 
   return (

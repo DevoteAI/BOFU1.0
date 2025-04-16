@@ -106,10 +106,10 @@ export function MainHeader({
                   e.preventDefault();
                   e.stopPropagation();
                   
-                  console.log("Logo clicked - using DIRECT replacement");
+                  console.log("Logo clicked - navigate to home");
                   
-                  // Force the most direct navigation possible
-                  window.location.replace(window.location.origin + '/');
+                  // Use React Router instead of direct location replacement
+                  navigate('/');
                 }}
               >
                 <motion.div
@@ -130,10 +130,10 @@ export function MainHeader({
                   e.preventDefault();
                   e.stopPropagation();
                   
-                  console.log("History button clicked in MainHeader - using DIRECT replacement");
+                  console.log("History button clicked in MainHeader");
                   
-                  // Force the most direct navigation possible
-                  window.location.replace(window.location.origin + '/history');
+                  // Use React Router instead of direct location replacement
+                  navigate('/history');
                 }}
                 className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2
                   ${showHistory 
