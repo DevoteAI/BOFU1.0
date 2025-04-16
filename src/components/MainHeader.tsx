@@ -23,7 +23,6 @@ interface MainHeaderProps {
   user?: any;
   forceHistoryView?: () => void;
   onShowAuthModal?: () => void;
-  isMobile?: boolean;
 }
 
 export function MainHeader({ 
@@ -32,8 +31,7 @@ export function MainHeader({
   onStartNew, 
   user: propUser,
   forceHistoryView,
-  onShowAuthModal,
-  isMobile
+  onShowAuthModal
 }: MainHeaderProps) {
   const [showAuthModal, setShowAuthModal] = React.useState(false);
   const [user, setUser] = React.useState(propUser);
@@ -108,7 +106,7 @@ export function MainHeader({
                   e.preventDefault();
                   e.stopPropagation();
                   
-                  console.log("Logo clicked - using hybrid approach");
+                  console.log("Logo clicked - using DIRECT navigation");
                   
                   // First, update local storage state if needed
                   try {
@@ -128,19 +126,8 @@ export function MainHeader({
                   sessionStorage.setItem('bofu_viewing_results', 'false');
                   sessionStorage.setItem('bofu_viewing_history', 'false');
                   
-                  // Update local React state if needed
-                  if (setShowHistory) {
-                    setShowHistory(false);
-                  }
-                  
-                  // IMPORTANT: Instead of using React Router directly, use history state API
-                  // This acts similarly to a link click but will work even in production
-                  const mainURL = window.location.origin + '/';
-                  window.history.pushState({}, '', mainURL);
-                  
-                  // Dispatch a popstate event to notify the app the URL has changed
-                  // This triggers React Router to update
-                  window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+                  // Force hard navigation that bypasses React Router
+                  window.location.href = window.location.origin + '/';
                 }}
               >
                 <motion.div
@@ -156,15 +143,12 @@ export function MainHeader({
           <div className="flex items-center gap-4">
             {showHistory !== undefined && setShowHistory && (
               <motion.button
-                className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 bg-transparent border border-white text-white hover:bg-white hover:text-[#1A1B1F] focus:bg-white focus:text-[#1A1B1F] ${
-                  isMobile ? "order-2" : ""
-                }`}
-                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                onClick={(e) => {
                   // Prevent default behavior
                   e.preventDefault();
                   e.stopPropagation();
-
-                  console.log("History button clicked - using hybrid approach");
+                  
+                  console.log("History button clicked in MainHeader - using DIRECT navigation");
                   
                   // First, update local storage state if needed
                   try {
@@ -172,31 +156,26 @@ export function MainHeader({
                     const parsedState = currentState ? JSON.parse(currentState) : {};
                     parsedState.showHistory = true;
                     parsedState.currentView = 'history';
-                    parsedState.lastView = parsedState.currentView;
+                    parsedState.lastView = 'history';
                     localStorage.setItem('bofu_app_state', JSON.stringify(parsedState));
                   } catch (error) {
                     console.error("Error updating localStorage:", error);
                   }
                   
                   // Update session storage for state restoration
+                  sessionStorage.setItem('bofu_came_from_history', 'true');
                   sessionStorage.setItem('bofu_current_view', 'history');
-                  sessionStorage.setItem('bofu_viewing_history', 'true');
                   sessionStorage.setItem('bofu_viewing_results', 'false');
+                  sessionStorage.setItem('bofu_viewing_history', 'true');
                   
-                  // Update local React state if needed
-                  if (setShowHistory) {
-                    setShowHistory(true);
-                  }
-                  
-                  // IMPORTANT: Instead of using React Router directly, use history state API
-                  // This acts similarly to a link click but will work even in production
-                  const historyURL = window.location.origin + '/history';
-                  window.history.pushState({}, '', historyURL);
-                  
-                  // Dispatch a popstate event to notify the app the URL has changed
-                  // This triggers React Router to update
-                  window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+                  // Force hard navigation that bypasses React Router
+                  window.location.href = window.location.origin + '/history';
                 }}
+                className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2
+                  ${showHistory 
+                    ? 'bg-gradient-to-r from-secondary-800 to-secondary-700 text-primary-300 border border-primary-500/30 shadow-glow hover:shadow-glow-strong' 
+                    : 'text-gray-300 hover:text-primary-300 hover:bg-secondary-800/70'
+                  }`}
                 whileHover={{ y: -1 }}
                 whileTap={{ y: 1 }}
               >

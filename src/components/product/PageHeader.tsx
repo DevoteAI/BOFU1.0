@@ -29,64 +29,18 @@ export function PageHeader({
     e.preventDefault(); // Prevent any default behavior
     e.stopPropagation();
     
-    console.log("History button clicked in PageHeader - FORCE RELOAD APPROACH");
+    console.log("History button clicked in PageHeader - using DIRECT navigation");
     
     // First, save any necessary state to sessionStorage
-    sessionStorage.setItem('bofu_viewing_history', 'true');
-    sessionStorage.setItem('bofu_current_view', 'history');
-    sessionStorage.setItem('bofu_viewing_results', 'false');
-    sessionStorage.setItem('bofu_force_history_view', 'true');
-    
-    // Multi-layered approach with fallbacks
-    try {
-      // Layer 1: Try to use React state update for immediate feedback
-      if (setShowHistory) {
-        setShowHistory(true);
-      }
-      
-      // Layer 2: Try to use history API with a popstate event
-      try {
-        const historyURL = window.location.origin + '/history';
-        window.history.pushState({}, '', historyURL);
-        window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
-      } catch (error) {
-        console.error("History API failed:", error);
-      }
-      
-      // Layer 3: Force router navigation in a timeout
-      setTimeout(() => {
-        if (navigate) {
-          try {
-            navigate('/history', { replace: true });
-          } catch (error) {
-            console.error("Navigation failed:", error);
-          }
-        }
-      }, 50);
-      
-      // Layer 4: Call the forceHistoryView function if available
-      if (forceHistoryView) {
-        setTimeout(() => {
-          try {
-            forceHistoryView();
-          } catch (error) {
-            console.error("ForceHistoryView failed:", error);
-          }
-        }, 100);
-      }
-      
-      // Layer 5 (last resort): If after 300ms we're still not on history, force a reload
-      setTimeout(() => {
-        const currentPath = window.location.pathname;
-        if (currentPath !== '/history') {
-          console.log("EMERGENCY REDIRECT: Still not on history page, forcing hard reload");
-          window.location.href = window.location.origin + '/history';
-        }
-      }, 300);
-    } catch (error) {
-      console.error("All navigation methods failed. Last resort redirect:", error);
-      window.location.href = window.location.origin + '/history';
+    if (showHistory !== undefined) {
+      sessionStorage.setItem('bofu_viewing_history', 'true');
+      sessionStorage.setItem('bofu_current_view', 'history');
+      sessionStorage.setItem('bofu_viewing_results', 'false');
     }
+    
+    // Directly force navigation using window.location
+    // Use absolute path for Netlify deployment compatibility
+    window.location.href = window.location.origin + '/history';
   };
 
   // Handler for going to the main page
@@ -94,53 +48,18 @@ export function PageHeader({
     e.preventDefault(); // Prevent any default behavior
     e.stopPropagation();
     
-    console.log("Company name clicked in PageHeader - FORCE RELOAD APPROACH");
+    console.log("Company name clicked in PageHeader - using DIRECT navigation");
     
     // First, save any necessary state to sessionStorage
-    sessionStorage.setItem('bofu_viewing_history', 'false');
-    sessionStorage.setItem('bofu_current_view', 'main');
-    sessionStorage.setItem('bofu_viewing_results', 'false');
-    sessionStorage.removeItem('bofu_force_history_view');
-    
-    // Multi-layered approach with fallbacks
-    try {
-      // Layer 1: Try to use React state update for immediate feedback
-      if (setShowHistory) {
-        setShowHistory(false);
-      }
-      
-      // Layer 2: Try to use history API with a popstate event
-      try {
-        const mainURL = window.location.origin + '/';
-        window.history.pushState({}, '', mainURL);
-        window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
-      } catch (error) {
-        console.error("History API failed:", error);
-      }
-      
-      // Layer 3: Force router navigation in a timeout
-      setTimeout(() => {
-        if (navigate) {
-          try {
-            navigate('/', { replace: true });
-          } catch (error) {
-            console.error("Navigation failed:", error);
-          }
-        }
-      }, 50);
-      
-      // Layer 4 (last resort): If after 300ms we're still not on main, force a reload
-      setTimeout(() => {
-        const currentPath = window.location.pathname;
-        if (currentPath !== '/') {
-          console.log("EMERGENCY REDIRECT: Still not on main page, forcing hard reload");
-          window.location.href = window.location.origin + '/';
-        }
-      }, 300);
-    } catch (error) {
-      console.error("All navigation methods failed. Last resort redirect:", error);
-      window.location.href = window.location.origin + '/';
+    if (showHistory !== undefined) {
+      sessionStorage.setItem('bofu_viewing_history', 'false');
+      sessionStorage.setItem('bofu_current_view', 'main');
+      sessionStorage.setItem('bofu_viewing_results', 'false');
     }
+    
+    // Directly force navigation using window.location
+    // Use absolute path for Netlify deployment compatibility
+    window.location.href = window.location.origin + '/';
   };
 
   return (

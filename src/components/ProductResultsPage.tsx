@@ -42,7 +42,6 @@ function ProductResultsPage({
   const [user, setUser] = useState<any>(null);
   const [hasSavedToHistory, setHasSavedToHistory] = useState(!!existingId);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const navigate = useNavigate();
   
   // Debug: Log the products received
   console.log('Debug - ProductResultsPage received props:', {
@@ -426,119 +425,30 @@ function ProductResultsPage({
         setShowHistory={(show) => {
           console.log("Setting history state in ProductResultsPage:", show);
           
-          // Save any edited products to session storage first
-          if (editedProducts.length > 0) {
-            try {
-              sessionStorage.setItem('bofu_edited_products', JSON.stringify(editedProducts));
-              console.log("Saved edited products to session storage");
-            } catch (error) {
-              console.error("Error saving products:", error);
-            }
-          }
-          
-          // Update React state if needed
+          // Update React state if needed (but we're going to navigate away anyway)
           if (setShowHistory) {
             setShowHistory(show);
           }
           
-          // Use the multi-layered approach for more reliable navigation
+          // Save current state to session storage before navigation
+          if (editedProducts.length > 0) {
+            sessionStorage.setItem('bofu_edited_products', JSON.stringify(editedProducts));
+            console.log("Saved products before direct navigation");
+          }
+          
+          // Direct navigation using window.location
           if (show) {
-            console.log("Navigating to history with MULTI-LAYERED approach");
-            
-            // Update session storage
+            console.log("DIRECT navigation to history page");
             sessionStorage.setItem('bofu_viewing_history', 'true');
             sessionStorage.setItem('bofu_current_view', 'history');
             sessionStorage.setItem('bofu_viewing_results', 'false');
-            sessionStorage.setItem('bofu_force_history_view', 'true');
-            
-            // Multi-layered approach with fallbacks
-            try {
-              // Layer 1: Try to use history API with a popstate event
-              try {
-                const historyURL = window.location.origin + '/history';
-                window.history.pushState({}, '', historyURL);
-                window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
-              } catch (error) {
-                console.error("History API failed:", error);
-              }
-              
-              // Layer 2: Force router navigation if navigate is available
-              if (navigate) {
-                setTimeout(() => {
-                  try {
-                    navigate('/history', { replace: true });
-                  } catch (error) {
-                    console.error("Navigation failed:", error);
-                  }
-                }, 50);
-              }
-              
-              // Layer 3: Try to use forceHistoryView if available
-              if (forceHistoryView) {
-                setTimeout(() => {
-                  try {
-                    forceHistoryView();
-                  } catch (error) {
-                    console.error("ForceHistoryView failed:", error);
-                  }
-                }, 100);
-              }
-              
-              // Layer 4 (last resort): If after 300ms we're still not on history, force a reload
-              setTimeout(() => {
-                const currentPath = window.location.pathname;
-                if (currentPath !== '/history') {
-                  console.log("EMERGENCY REDIRECT: Still not on history page, forcing hard reload");
-                  window.location.href = window.location.origin + '/history';
-                }
-              }, 300);
-            } catch (error) {
-              console.error("All navigation methods failed. Last resort redirect:", error);
-              window.location.href = window.location.origin + '/history';
-            }
+            window.location.href = window.location.origin + '/history';
           } else {
-            console.log("Navigating to main with MULTI-LAYERED approach");
-            
-            // Update session storage
+            console.log("DIRECT navigation to main page");
             sessionStorage.setItem('bofu_viewing_history', 'false');
             sessionStorage.setItem('bofu_current_view', 'main');
             sessionStorage.setItem('bofu_viewing_results', 'false');
-            sessionStorage.removeItem('bofu_force_history_view');
-            
-            // Multi-layered approach with fallbacks
-            try {
-              // Layer 1: Try to use history API with a popstate event
-              try {
-                const mainURL = window.location.origin + '/';
-                window.history.pushState({}, '', mainURL);
-                window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
-              } catch (error) {
-                console.error("History API failed:", error);
-              }
-              
-              // Layer 2: Force router navigation if navigate is available
-              if (navigate) {
-                setTimeout(() => {
-                  try {
-                    navigate('/', { replace: true });
-                  } catch (error) {
-                    console.error("Navigation failed:", error);
-                  }
-                }, 50);
-              }
-              
-              // Layer 3 (last resort): If after 300ms we're still not on main, force a reload
-              setTimeout(() => {
-                const currentPath = window.location.pathname;
-                if (currentPath !== '/') {
-                  console.log("EMERGENCY REDIRECT: Still not on main page, forcing hard reload");
-                  window.location.href = window.location.origin + '/';
-                }
-              }, 300);
-            } catch (error) {
-              console.error("All navigation methods failed. Last resort redirect:", error);
-              window.location.href = window.location.origin + '/';
-            }
+            window.location.href = window.location.origin + '/';
           }
         }}
         forceHistoryView={forceHistoryView}
